@@ -69,7 +69,7 @@ async function del(col,id){
 async function log(msg){try{await put('bitacora',newId(),{ts:Date.now(),msg})}catch(e){}}
 function authView(msg,email){
   const inn=AUTH.mode==='in';
-  $('#authbox').innerHTML='<div class="lock"><div class="brand" style="color:#fff;opacity:.8">ARGYR</div><h2>'+(inn?'Entrá a tu cuenta':'Creá tu cuenta')+'</h2><p role="alert">'+esc(msg||'')+'</p>'+
+  $('#authbox').innerHTML='<div class="lock"><svg class="logo" role="img" aria-label="ARGYR" style="color:#fff;width:52px;height:60px;margin:0"><use href="#logo"/></svg><h2>'+(inn?'Entrá a tu cuenta':'Creá tu cuenta')+'</h2><p role="alert">'+esc(msg||'')+'</p>'+
   '<div class="auth" style="display:flex;flex-direction:column"><input id="au-mail" type="email" autocomplete="email" placeholder="Correo electrónico" value="'+esc(email||'')+'"><input id="au-pass" type="password" autocomplete="'+(inn?'current-password':'new-password')+'" placeholder="Contraseña (mínimo 6 caracteres)"><button class="btn" data-a="auth-go">'+(inn?'Entrar':'Crear cuenta')+'</button></div>'+
   '<button class="cancel" data-a="auth-toggle">'+(inn?'No tengo cuenta':'Ya tengo cuenta')+'</button></div>'}
 async function authGo(){
@@ -198,7 +198,7 @@ function banners(d){let h='';
 function onData(){render();if(S.sheet&&S.sheet.type==='detalle')openSheet(S.sheet)}
 function render(){
   const app=$('#app');renderNav();
-  if(!S.ready){app.innerHTML='<div class="top"><div><div class="brand">ARGYR</div><h1>Mi actividad</h1></div></div><div class="hero"><div class="lbl">Cargando tus ventas…</div><div class="big num">$ —</div></div>';return}
+  if(!S.ready){app.innerHTML='<div class="top"><div><svg class="logo" role="img" aria-label="ARGYR"><use href="#logo"/></svg><h1>Mi actividad</h1></div></div><div class="hero"><div class="lbl">Cargando tus ventas…</div><div class="big num">$ —</div></div>';return}
   const ae=document.activeElement,fid=ae&&ae.id,ss=ae&&ae.selectionStart;
   const d=D();
   const v={inicio:vInicio,ventas:vVentas,dinero:vDinero,stats:vStats,ajustes:vAjustes}[S.tab](d);
@@ -214,7 +214,7 @@ function vInicio(d){
   const sal=saldos(d),disp=sum(Object.values(sal),x=>x),hoy=stats(d,rng('hoy'));
   const pend=d.ventas.filter(o=>valida(o)&&porCobrarDe(o)>0),pTot=sum(pend,porCobrarDe);
   const mv=movs(d).slice(0,6);
-  return '<div class="top"><div><div class="brand">ARGYR</div><h1>Mi actividad</h1><div class="date">'+fDia(Date.now())+'</div></div><button class="icon-btn" data-a="tab" data-v="ajustes" aria-label="Ajustes">'+ico('gear')+'</button></div>'+
+  return '<div class="top"><div><svg class="logo" role="img" aria-label="ARGYR"><use href="#logo"/></svg><h1>Mi actividad</h1><div class="date">'+fDia(Date.now())+'</div></div><button class="icon-btn" data-a="tab" data-v="ajustes" aria-label="Ajustes">'+ico('gear')+'</button></div>'+
   '<section class="hero" aria-label="Dinero disponible"><div><div class="lbl">Dinero disponible</div><div class="big num">'+m(disp)+'</div><div class="sub">Saldo de tus cuentas registradas</div></div>'+
   '<div class="accts">'+Object.keys(CUENTAS).map(k=>'<div class="acct"><small>'+CUENTAS[k]+'</small><b class="num">'+m(sal[k])+'</b></div>').join('')+'</div></section>'+
   '<div class="row2"><button class="card tap" data-a="goventas" data-per="hoy"><div class="k">Ventas de hoy</div><div class="v num">'+m(hoy.vendido)+'</div><div class="s">'+plural(hoy.ops,'operación','operaciones')+'</div></button>'+
@@ -536,7 +536,7 @@ async function hashPin(pin,salt){try{const b=new TextEncoder().encode(salt+':'+p
 async function checkPin(pin){try{const j=JSON.parse(localStorage.getItem('argyr:pin'));return (await hashPin(pin,j.salt))===j.hash}catch(e){return false}}
 async function savePin(pin){const salt=newId();localStorage.setItem('argyr:pin',JSON.stringify({salt,hash:await hashPin(pin,salt)}))}
 function padDraw(err){const o=PAD.o,b=PAD.buf;
-  $('#lockbox').innerHTML='<div class="lock" role="dialog" aria-modal="true"><div class="brand" style="color:#fff;opacity:.8">ARGYR</div><h2>'+esc(o.title)+'</h2><p role="alert">'+esc(err||o.sub||'')+'</p><div class="dots" aria-hidden="true">'+[0,1,2,3].map(i=>'<i class="'+(i<b.length?'on':'')+'"></i>').join('')+'</div><div class="pad">'+
+  $('#lockbox').innerHTML='<div class="lock" role="dialog" aria-modal="true"><svg class="logo" role="img" aria-label="ARGYR" style="color:#fff;width:52px;height:60px;margin:0"><use href="#logo"/></svg><h2>'+esc(o.title)+'</h2><p role="alert">'+esc(err||o.sub||'')+'</p><div class="dots" aria-hidden="true">'+[0,1,2,3].map(i=>'<i class="'+(i<b.length?'on':'')+'"></i>').join('')+'</div><div class="pad">'+
   [1,2,3,4,5,6,7,8,9].map(n=>'<button data-a="pk" data-v="'+n+'">'+n+'</button>').join('')+'<button class="x" data-a="pk" data-v="c">Borrar</button><button data-a="pk" data-v="0">0</button><span></span></div>'+(o.cancel?'<button class="cancel" data-a="pcancel">Cancelar</button>':'')+'</div>'}
 function pinPad(o){PAD={o,buf:''};padDraw()}
 async function padKey(v){

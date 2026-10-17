@@ -185,6 +185,16 @@ input[type="date"]::-webkit-date-and-time-value,input[type="datetime-local"]::-w
 .cb-h{font-size:12px;color:var(--muted);font-weight:700;padding:8px 12px 4px;text-transform:uppercase;letter-spacing:.06em}
 .vars{display:flex;gap:8px;flex-wrap:wrap}
 
+.clis{margin-top:6px}
+.cli{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 12px;align-items:center;width:100%;text-align:left;padding:11px 0;border-bottom:1px solid var(--line)}
+.cli:last-child{border-bottom:0}
+.cli .rk{width:28px;height:28px;border-radius:50%;background:var(--surface-2);color:var(--muted);display:grid;place-items:center;font-family:var(--f-display);font-weight:800;font-size:14px}
+.cli .rk.top{background:var(--accent-soft);color:var(--accent)}
+.cli .mid{min-width:0}.cli .mid b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cli small{color:var(--muted);font-size:13px}
+.cli .track{grid-column:2/-1;display:block;height:6px;background:var(--surface-2);border-radius:99px;overflow:hidden}
+.cli .fill{display:block;height:100%;border-radius:99px;background:var(--accent)}
+
 html{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
 body{margin:0}[hidden]{display:none!important}
 .auth{gap:12px;width:100%;max-width:340px}

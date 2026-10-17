@@ -39,7 +39,7 @@ const sum=(a,f)=>a.reduce((x,y)=>x+f(y),0);
 /* ---------- estado ---------- */
 const S={ventas:[],gastos:[],transf:[],config:{},bitacora:[],ready:false,usingDb:false,tab:'inicio',
   f:{estado:'todas',per:'mes',q:'',medio:'',cat:'',desde:'',hasta:'',open:false},
-  vmetric:'vendido',sp:'mes',evo:'ventas',span:'dias',sel:-1,dfilt:'todos',demoHidden:false,sheet:null};
+  vmetric:'vendido',sp:'mes',cliAll:true,cliBy:'monto',evo:'ventas',span:'dias',sel:-1,dfilt:'todos',demoHidden:false,sheet:null};
 try{S.demoHidden=localStorage.getItem('argyr:demoHidden')==='1'}catch(e){}
 /* ---------- almacenamiento: db de la cuenta, o este navegador si no hay ---------- */
 let DB=null;const LS='argyr:data:v1';
@@ -302,6 +302,18 @@ function chart(bk){
     if(bk.length<=6||i%2===(bk.length-1)%2)s+='<text x="'+cx+'" y="'+(H-8)+'" text-anchor="middle" font-size="11" style="fill:var(--muted)">'+b.l+'</text>';
     s+='<rect x="'+(cx-cw/2)+'" y="0" width="'+cw+'" height="'+H+'" fill="transparent" data-a="bar" data-i="'+i+'" style="cursor:pointer"/>'});
   return s+'</svg>'}
+function clientesHtml(d,r){
+  const rg=S.cliAll?[0,Infinity]:r,mp=new Map(),porMonto=S.cliBy==='monto';
+  d.ventas.forEach(o=>{if(!valida(o)||o.ts<rg[0]||o.ts>=rg[1])return;const nm=(o.cliente||'').trim(),k=norm(nm);if(!k||k==='mostrador')return;
+    const e=mp.get(k)||{n:nm,total:0,ops:0,last:0};e.total+=o.total;e.ops++;if(o.ts>e.last){e.last=o.ts;e.n=nm}mp.set(k,e)});
+  const L=[...mp.values()].sort((a,b)=>porMonto?(b.total-a.total||b.ops-a.ops):(b.ops-a.ops||b.total-a.total)).slice(0,10);
+  const mx=L.length?Math.max(1,...L.map(x=>porMonto?x.total:x.ops)):1;
+  const sg=(act,items,cur)=>'<div class="seg light" role="group">'+items.map(x=>'<button data-a="'+act+'" data-v="'+x[0]+'" aria-pressed="'+(cur===x[0])+'">'+x[1]+'</button>').join('')+'</div>';
+  return '<div class="sec"><h2>Mejores clientes</h2></div><div class="card"><div style="display:flex;flex-direction:column;gap:8px">'+
+    sg('cliall',[['todo','Todo el tiempo'],['per',PER[S.sp]]],S.cliAll?'todo':'per')+sg('cliby',[['monto','Por monto'],['compras','Por compras']],S.cliBy)+'</div>'+
+    (L.length?'<div class="clis">'+L.map((x,i)=>'<button class="cli" data-a="cli" data-v="'+esc(x.n)+'"><span class="rk'+(i<3?' top':'')+'">'+(i+1)+'</span><span class="mid"><b>'+esc(x.n)+'</b><small>'+plural(x.ops,'compra','compras')+' · última '+fCorta(x.last)+'</small></span><b class="num">'+m(x.total)+'</b><span class="track"><span class="fill" style="width:'+Math.max(3,Math.round((porMonto?x.total:x.ops)/mx*100))+'%"></span></span></button>').join('')+'</div>':
+    '<p class="hint" style="margin-top:12px">Todavía no hay clientes con nombre en este período. Escribí el nombre al cargar una venta para ver quién compra más.</p>')+
+    '<p class="hint" style="margin-top:10px">Cuentan las ventas cobradas y pendientes. Las canceladas, las devueltas y las de "Mostrador" no entran. Tocá un cliente para ver sus ventas.</p></div>'}
 function vStats(d){
   const r=rng(S.sp),pr=rng(S.sp,true),s=stats(d,r),p=stats(d,pr),lab={hoy:'vs ayer',semana:'vs semana anterior',mes:'vs mes anterior'}[S.sp];
   const disp=sum(Object.values(saldos(d)),x=>x);
@@ -322,7 +334,7 @@ function vStats(d){
   '<div class="sec"><h2>Cobrado por medio de pago</h2></div><div class="card">'+bars(mrows,Math.max(1,...mrows.map(x=>x.total)),'Todavía no cobraste nada en este período.')+'</div>'+
   '<div class="sec"><h2>Más vendidos</h2></div><div class="card"><div class="lab" style="margin-bottom:8px">Productos</div>'+bars(prods,Math.max(1,...prods.map(x=>x.total)),'Sin ventas en este período.')+
   (cats.length?'<div class="lab" style="margin:14px 0 8px">Categorías</div>'+bars(cats,Math.max(1,...cats.map(x=>x.total)),''):'')+'</div>'+
-  '<div class="sec"><h2>Evolución</h2></div><div class="card"><div class="seg light" role="group" aria-label="Serie">'+[['ventas','Ventas'],['gastos','Gastos'],['ganancia','Ganancia']].map(x=>'<button data-a="evo" data-v="'+x[0]+'" aria-pressed="'+(S.evo===x[0])+'">'+x[1]+'</button>').join('')+'</div>'+
+  clientesHtml(d,r)+'<div class="sec"><h2>Evolución</h2></div><div class="card"><div class="seg light" role="group" aria-label="Serie">'+[['ventas','Ventas'],['gastos','Gastos'],['ganancia','Ganancia']].map(x=>'<button data-a="evo" data-v="'+x[0]+'" aria-pressed="'+(S.evo===x[0])+'">'+x[1]+'</button>').join('')+'</div>'+
   '<div class="chips" style="margin-top:10px">'+[['dias','Últimos 14 días'],['meses','Últimos 6 meses']].map(x=>'<button class="chip" data-a="span" data-v="'+x[0]+'" aria-pressed="'+(S.span===x[0])+'">'+x[1]+'</button>').join('')+'</div>'+
   '<div class="chart-wrap">'+chart(bk)+'</div><div class="cap"><b>'+esc(bk[sel].full)+'</b> · '+ev+' '+m(bk[sel].v)+' &nbsp;|&nbsp; Total del gráfico '+m(tot)+'</div></div>'}
 function vAjustes(d){
@@ -591,6 +603,9 @@ document.addEventListener('click',async ev=>{
   case 'sp':S.sp=v;render();break;
   case 'evo':S.evo=v;render();break;
   case 'span':S.span=v;S.sel=-1;render();break;
+  case 'cliall':S.cliAll=(v==='todo');render();break;
+  case 'cliby':S.cliBy=v;render();break;
+  case 'cli':S.tab='ventas';S.f.per='todo';S.f.estado='todas';S.f.desde=S.f.hasta='';S.f.medio=S.f.cat='';S.f.q=v;window.scrollTo(0,0);render();break;
   case 'bar':S.sel=+el.dataset.i;render();break;
   case 'venta':openSheet({type:'detalle',id});break;
   case 'mov':

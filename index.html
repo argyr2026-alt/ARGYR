@@ -177,6 +177,14 @@ input,select,textarea{max-width:100%;min-width:0}
 input[type="date"],input[type="datetime-local"]{display:block;width:100%;min-width:0;-webkit-appearance:none;appearance:none;text-align:left;min-height:46px;line-height:1.2}
 input[type="date"]::-webkit-date-and-time-value,input[type="datetime-local"]::-webkit-date-and-time-value{text-align:left;min-width:0}
 
+.cbw{position:relative}
+.cb{position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:6;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:0 14px 30px rgba(0,0,0,.28);max-height:min(250px,36vh);overflow-y:auto;overscroll-behavior:contain;padding:6px}
+.cb button{display:block;width:100%;text-align:left;padding:12px;border-radius:10px;font-weight:600}
+.cb button:hover,.cb button:active{background:var(--accent-soft);color:var(--accent)}
+.cb .cb-use{color:var(--accent);background:var(--accent-soft)}
+.cb-h{font-size:12px;color:var(--muted);font-weight:700;padding:8px 12px 4px;text-transform:uppercase;letter-spacing:.06em}
+.vars{display:flex;gap:8px;flex-wrap:wrap}
+
 html{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
 body{margin:0}[hidden]{display:none!important}
 .auth{gap:12px;width:100%;max-width:340px}

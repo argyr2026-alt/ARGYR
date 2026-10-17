@@ -169,6 +169,14 @@ details summary{cursor:pointer;color:var(--accent);font-weight:600;font-size:14p
 .its{gap:12px}.itl{display:flex;justify-content:space-between;gap:12px;align-items:baseline;color:var(--ink)}
 .itl .mid{min-width:0;overflow-wrap:anywhere}.itl small{display:block;color:var(--muted);font-size:13px}
 
+/* sin desplazamiento lateral: los campos de fecha de iOS/Android no pueden ensanchar la hoja */
+html,body{overflow-x:hidden}
+.sheet{overflow-x:hidden;touch-action:pan-y}
+.sheet,.sheet .form,.sheet .field,.sheet .itm,.sheet .two,.scrim{min-width:0;max-width:100%}
+input,select,textarea{max-width:100%;min-width:0}
+input[type="date"],input[type="datetime-local"]{display:block;width:100%;min-width:0;-webkit-appearance:none;appearance:none;text-align:left;min-height:46px;line-height:1.2}
+input[type="date"]::-webkit-date-and-time-value,input[type="datetime-local"]::-webkit-date-and-time-value{text-align:left;min-width:0}
+
 html{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
 body{margin:0}[hidden]{display:none!important}
 .auth{gap:12px;width:100%;max-width:340px}

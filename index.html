@@ -229,6 +229,24 @@ input[type="date"]::-webkit-date-and-time-value,input[type="datetime-local"]::-w
 .bdg{position:absolute;top:-5px;right:-5px;min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:var(--accent);color:var(--accent-ink);font:700 11px/18px var(--f-body);font-style:normal;text-align:center}
 select.inp{appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;background-size:5px 5px;background-repeat:no-repeat;padding-right:34px;text-overflow:ellipsis}
 
+/* pestañas de Dinero (estilo carpeta) y módulo de gastos */
+.dtabs{display:flex;gap:2px;background:linear-gradient(145deg,var(--hero-a),var(--hero-b));border-radius:22px 22px 0 0;padding:10px 10px 0;overflow:hidden}
+.dtabs button{flex:1;min-width:0;position:relative;padding:12px 4px 13px;font-weight:600;font-size:14.5px;color:rgba(255,255,255,.92);border-radius:18px 18px 0 0;white-space:nowrap}
+.dtabs button[aria-selected="true"]{background:var(--bg);color:var(--ink);font-weight:800}
+.dtabs button[aria-selected="true"]::before,.dtabs button[aria-selected="true"]::after{content:"";position:absolute;bottom:0;width:14px;height:14px;pointer-events:none}
+.dtabs button[aria-selected="true"]::before{left:-14px;background:radial-gradient(circle at 0 0,transparent 13.5px,var(--bg) 14px)}
+.dtabs button[aria-selected="true"]::after{right:-14px;background:radial-gradient(circle at 100% 0,transparent 13.5px,var(--bg) 14px)}
+.dtabs button:first-child::before,.dtabs button:last-child::after{display:none}
+.dpane{padding-top:14px}
+.pbar{height:10px;background:var(--surface-2);border-radius:99px;overflow:hidden;margin:10px 0 8px}.pbar span{display:block;height:100%;border-radius:99px}
+.stk{display:flex;height:14px;border-radius:99px;overflow:hidden;background:var(--surface-2);margin:8px 0 12px}.stk span{display:block;height:100%}
+.leg{display:flex;justify-content:space-between;gap:10px;align-items:baseline;padding:4px 0}.leg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:8px}
+.banner.bad{background:var(--bad-soft);color:var(--bad)}
+.tiles3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.tiles3 .card{padding:12px;box-shadow:none;background:var(--surface-2)}.tiles3 .v{font-size:17px}
+.hero .per{margin:-2px 0 -4px}
+.acct small{white-space:nowrap}.acct{padding-inline:8px}
+.seg.s4 button{font-size:12.5px;padding:9px 2px}
+
 html{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
 body{margin:0}[hidden]{display:none!important}
 .auth{gap:12px;width:100%;max-width:340px}

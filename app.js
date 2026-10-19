@@ -149,9 +149,10 @@ function makeDemo(){
   mk(35,15,0,'Tomás Herrera','Mochila urbana','Accesorios',2,32000,17000,'transferencia','cobrada');
   mk(38,12,0,'Mostrador','Remera estampada','Remeras',6,6000,2500,'efectivo','cobrada');
   const G=[],T=[];
-  const g=(dias,h,tipo,concepto,monto,cuenta)=>G.push({id:'demog'+(G.length+1),demo:true,ts:D0(addD(now,-dias))+h*3600000,tipo,concepto,monto:toC(monto),cuenta,notas:''});
-  g(0,8,'gasto','Bolsas y etiquetas',6500,'efectivo');g(1,9,'gasto','Flete de mercadería',18000,'banco');
-  g(3,20,'haberes','Sueldo de Juan (cocina)',25000,'efectivo');g(10,10,'gasto','Alquiler del puesto',40000,'banco');
+  const g=(dias,h,tipo,concepto,monto,cuenta,clase,items)=>G.push({id:'demog'+(G.length+1),demo:true,ts:D0(addD(now,-dias))+h*3600000,tipo,concepto,monto:toC(monto),cuenta,notas:'',clase:clase||'variable',items:(items||[]).map(([nombre,cantidad,unidad,precio])=>({nombre,cantidad,unidad,precio:toC(precio),total:Math.round(cantidad*toC(precio))}))});
+  g(0,8,'gasto','Bolsas y etiquetas',6500,'efectivo','variable',[['Bolsas kraft',500,'unidad',9],['Etiquetas',200,'unidad',10]]);g(1,9,'gasto','Flete de mercadería',18000,'banco','variable');
+  g(2,10,'gasto','Compra de insumos',141000,'banco','variable',[['Carne molida',12,'kg',9200],['Pan de hamburguesa',150,'unidad',210]]);g(12,10,'gasto','Compra de insumos',128000,'banco','variable',[['Carne molida',12,'kg',8400],['Pan de hamburguesa',140,'unidad',190]]);
+  g(3,20,'haberes','Sueldo de Juan (cocina)',25000,'efectivo');g(10,10,'gasto','Alquiler del puesto',40000,'banco','fijo');
   T.push({id:'demot1',demo:true,ts:D0(addD(now,-2))+14*3600000,desde:'efectivo',hasta:'banco',monto:toC(30000),notas:''});
   return {ventas:V,gastos:G,transf:T,config:{saldos:{efectivo:toC(150000),banco:toC(90000)}}}}
 let _demo=null;
@@ -202,7 +203,7 @@ function banners(d){let h='';
   if(!S.usingDb&&S.ready)h+='<div class="banner warn"><span>Sin conexión con tu cuenta: los datos se guardan solo en este navegador.</span></div>';
   if(S.dbError)h+='<div class="banner warn"><span>No se pudo sincronizar con tu cuenta. Revisá la conexión y recargá la página.</span></div>';
   return h}
-function onData(){render();if(S.sheet&&S.sheet.type==='detalle')openSheet(S.sheet)}
+function onData(){render();if(S.sheet&&(S.sheet.type==='detalle'||S.sheet.type==='gastoDet'))openSheet(S.sheet)}
 function render(){
   const app=$('#app');renderNav();
   if(!S.ready){app.innerHTML='<div class="top"><div><svg class="logo" role="img" aria-label="ARGYR"><use href="#logo"/></svg><h1>Mi actividad</h1></div></div><div class="hero"><div class="lbl">Cargando tus ventas…</div><div class="big num">$ —</div></div>';return}
@@ -218,13 +219,12 @@ function movRow(x){
   else{ic='up';cl='out';amt='<span class="amt num neg">'+mS(-x.monto)+'</span>';sub=CUENTAS[x.cuenta]+' · '+hora+' · '+({retiro:'Retiro',haberes:'Haberes'}[x.k]||'Gasto')}
   return '<button class="item" data-a="mov" data-k="'+x.k+'" data-id="'+esc(x.ref)+'"><span class="ava '+cl+'">'+ico(ic,20)+'</span><span class="mid"><div class="t">'+esc(x.t)+'</div><div class="d">'+sub+'</div></span><span class="r">'+amt+'</span></button>'}
 function vInicio(d){
-  const hoy=stats(d,rng('hoy')),gMes=stats(d,rng('mes')).gastos;
-  const pend=d.ventas.filter(o=>valida(o)&&porCobrarDe(o)>0),pTot=sum(pend,porCobrarDe);
+  const ay=S.hday==='ayer',r=rng('hoy',ay),st=stats(d,r),pedidos=d.ventas.filter(o=>o.ts>=r[0]&&o.ts<r[1]).length;
   const mv=movs(d).slice(0,6);
   return '<div class="top"><div><svg class="logo" role="img" aria-label="ARGYR"><use href="#logo"/></svg><h1>Mi actividad</h1><div class="date">'+fDia(Date.now())+'</div></div><button class="icon-btn" data-a="tab" data-v="ajustes" aria-label="Ajustes">'+ico('gear')+'</button></div>'+
-  '<section class="hero" aria-label="Ventas de hoy"><div><div class="lbl">Ventas de hoy</div><div class="big num">'+m(hoy.vendido)+'</div><div class="sub">'+plural(hoy.ops,'operación','operaciones')+' válidas hoy</div></div>'+
-  '<div class="accts"><div class="acct"><small>Cobrado hoy</small><b class="num">'+m(hoy.cob)+'</b></div><button class="acct" data-a="goventas" data-per="todo" data-estado="pendiente" aria-label="Ver ventas pendientes de cobro"><small>Por cobrar</small><b class="num">'+m(pTot)+'</b></button><button class="acct" data-a="ir-gastos" aria-label="Ver gastos"><small>Gastos del mes</small><b class="num">'+m(gMes)+'</b></button></div></section>'+
-  '<button class="card tap" style="margin-top:12px;display:flex;align-items:center;gap:14px" data-a="nueva"><span class="ava" style="width:46px;height:46px">'+ico('plus',24)+'</span><span><b style="font-family:var(--f-display);font-size:17px">Registrar venta</b><br><span class="s">Anotá una operación nueva</span></span></button>'+
+  '<section class="hero" aria-label="Ventas del día"><div class="per" role="group" aria-label="Día">'+[['ayer','Ayer'],['hoy','Hoy']].map(x=>'<button data-a="hday" data-v="'+x[0]+'" aria-pressed="'+((S.hday==='ayer')===(x[0]==='ayer'))+'">'+x[1]+'</button>').join('')+'</div>'+
+  '<div><div class="lbl">Ventas de '+(ay?'ayer':'hoy')+'</div><div class="big num">'+m(st.vendido)+'</div><div class="sub">'+plural(st.ops,'operación válida','operaciones válidas')+'</div></div>'+
+  '<div class="accts"><div class="acct"><small>Cobrado</small><b class="num">'+m(st.cob)+'</b></div><div class="acct"><small>Por cobrar</small><b class="num">'+m(st.porCobrar)+'</b></div><div class="acct"><small>Total pedidos</small><b class="num">'+pedidos+'</b></div></div></section>'+
   '<div class="sec"><h2>Últimos movimientos</h2>'+(mv.length?'<button data-a="tab" data-v="dinero">Ver todos</button>':'')+'</div>'+
   (mv.length?'<div class="list">'+mv.map(movRow).join('')+'</div>':'<div class="empty"><b>Todavía no hay movimientos</b>Cuando registres una venta cobrada o un gasto, aparece acá.</div>')}
 function ventasBase(d){const f=S.f;let from=0,to=Infinity;
@@ -278,13 +278,12 @@ function vVentas(d){
     '<p class="hint" style="margin:0">El estado se elige con los botones de arriba. La búsqueda también mira notas y envío.</p>'+
     '<div class="btns"><button class="btn ghost" data-a="exp-ventas-f">Exportar estas ventas (CSV)</button><button class="btn sec2" data-a="limpiar">Limpiar filtros</button></div></div></div>':'')+
   '<div id="lista" style="margin-top:6px">'+listaVentas(d)+'</div>'}
-function vDinero(d){
+function vIngresos(d){
   const sal=saldos(d),disp=sal.efectivo+sal.banco,pend=d.ventas.filter(o=>valida(o)&&porCobrarDe(o)>0);
   const all=movs(d),fl=S.dfilt;
   const L=fl==='pendiente'?[]:all.filter(x=>fl==='todos'||(fl==='ingresos'&&x.k==='cobro')||(fl==='gastos'&&(x.k==='gasto'||x.k==='retiro'))||(fl==='haberes'&&x.k==='haberes')||(fl==='transf'&&x.k==='transf'));
-  let h='<div class="top"><h1>Dinero</h1></div><section class="hero" aria-label="Dinero disponible"><div><div class="lbl">Dinero disponible</div><div class="big num">'+m(disp)+'</div><div class="sub">Efectivo + transferencias</div></div></section><div class="list cards3" style="margin-top:12px">'+ctasVis(d).map(k=>'<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div><div class="k">'+CUENTAS[k]+'</div><div class="v num" style="margin:2px 0 0">'+m(sal[k])+'</div></div><span class="ava mv">'+ico(k==='efectivo'?'wal':'swap',20)+'</span></div>').join('')+'</div>'+
+  let h='<section class="hero" aria-label="Dinero disponible"><div><div class="lbl">Dinero disponible</div><div class="big num">'+m(disp)+'</div><div class="sub">Efectivo + transferencias</div></div></section><div class="list cards3" style="margin-top:12px">'+ctasVis(d).map(k=>'<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div><div class="k">'+CUENTAS[k]+'</div><div class="v num" style="margin:2px 0 0">'+m(sal[k])+'</div></div><span class="ava mv">'+ico(k==='efectivo'?'wal':'swap',20)+'</span></div>').join('')+'</div>'+
   '<button class="card tap" style="margin-top:12px" data-a="goventas" data-per="todo" data-estado="pendiente"><div class="k">Pendiente de cobro</div><div class="v num">'+m(sum(pend,porCobrarDe))+'</div><div class="s">'+plural(pend.length,'operación','operaciones')+' · no está en tus saldos hasta que lo cobres</div></button>'+
-  '<div class="btns" style="margin-top:12px"><button class="btn ghost" data-a="gasto" data-v="gasto">Gasto</button><button class="btn ghost" data-a="gasto" data-v="haberes">Pagos de haberes</button><button class="btn ghost" data-a="transf">Pasar entre cuentas</button></div>'+
   '<div class="sec"><h2>Movimientos</h2><button data-a="saldos">Saldos iniciales</button></div>'+
   '<div class="chips" style="margin-top:0">'+[['todos','Todos'],['ingresos','Ingresos'],['gastos','Gastos'],['haberes','Haberes'],['pendiente','Pendiente de cobro'],['transf','Entre cuentas']].map(x=>'<button class="chip" data-a="dfilt" data-v="'+x[0]+'" aria-pressed="'+(fl===x[0])+'">'+x[1]+'</button>').join('')+'</div>';
   if(fl==='pendiente'){const ps=pend.slice().sort((a,b)=>b.ts-a.ts);
@@ -368,6 +367,275 @@ function vAjustes(d){
   (S.demoHidden&&!S.ventas.length?'<div class="set" style="margin-top:16px">'+row('showdemo','Mostrar datos de ejemplo')+'</div>':'')+
   '<p class="hint" style="margin-top:18px">'+(S.usingDb?'Tus datos se guardan en Supabase y se actualizan en todos tus dispositivos.':'Tus datos se guardan solo en este navegador. Descargá una copia de seguridad de vez en cuando.')+'</p>'}
 
+/* ---------- módulo de gastos y pestañas de Dinero ---------- */
+S.dtab='ingresos';S.hp='mes';S.hday='hoy';
+S.g={per:'mes',desde:'',hasta:'',v:'resumen',q:'',tipo:'',medio:'',ord:'fecha-d',prod:'',cmp:false,sel:-1};
+const CLASES={fijo:'Fijo',variable:'Variable'};
+const claseDe=g=>g.clase==='fijo'?'fijo':'variable';
+const UMAP={u:'unidad',un:'unidad',unid:'unidad',unidad:'unidad',unidades:'unidad',kg:'kg',kilo:'kg',kilos:'kg',kilogramo:'kg',kilogramos:'kg',g:'g',gr:'g',gramo:'g',gramos:'g',l:'litro',lt:'litro',lts:'litro',litro:'litro',litros:'litro',ml:'ml',paquete:'paquete',paquetes:'paquete',caja:'caja',cajas:'caja',docena:'docena',docenas:'docena'};
+const UNIDADES=['unidad','kg','g','litro','ml','paquete','caja','docena'];
+const unidadN=u=>{const k=norm(u);return k?(UMAP[k]||k):'unidad'};
+const uShort=u=>({unidad:'u.',litro:'L'}[u]||u);
+const gastosOnly=d=>d.gastos.filter(g=>g.tipo==='gasto');
+const gItems=g=>Array.isArray(g.items)?g.items:[];
+const gFecha=t=>new Date(t).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
+const GPER=[['hoy','Hoy'],['7d','Últimos 7 días'],['mes','Mes actual'],['mesant','Mes anterior'],['6m','Últimos 6 meses'],['anio','Último año'],['custom','Personalizado']];
+function gRange(p){const n=Date.now(),t0=D0(n);
+  if(p==='hoy')return {r:[t0,t0+DAY],pr:[t0-DAY,t0]};
+  if(p==='7d')return {r:[t0-6*DAY,t0+DAY],pr:[t0-13*DAY,t0-6*DAY]};
+  if(p==='mesant')return {r:[mo0(n,-1),mo0(n)],pr:[mo0(n,-2),mo0(n,-1)]};
+  if(p==='6m')return {r:[mo0(n,-5),mo0(n,1)],pr:[mo0(n,-11),mo0(n,-5)]};
+  if(p==='anio')return {r:[mo0(n,-11),mo0(n,1)],pr:[mo0(n,-23),mo0(n,-11)]};
+  if(p==='custom'&&S.g.desde){const a=new Date(S.g.desde+'T00:00').getTime(),b=(S.g.hasta?new Date(S.g.hasta+'T00:00').getTime():t0)+DAY;
+    if(isFinite(a)&&isFinite(b)&&b>a)return {r:[a,b],pr:[a-(b-a),a]}}
+  return {r:[mo0(n),mo0(n,1)],pr:[mo0(n,-1),mo0(n)]}}
+function gStats(d,rg){
+  const L=gastosOnly(d).filter(g=>g.ts>=rg[0]&&g.ts<rg[1]);
+  const total=sum(L,g=>g.monto),n=L.length,fijo=sum(L.filter(g=>claseDe(g)==='fijo'),g=>g.monto),ef=sum(L.filter(g=>ctaN(g.cuenta)==='efectivo'),g=>g.monto);
+  let nprod=0;L.forEach(g=>{nprod+=gItems(g).length});
+  return {L,total,n,prom:n?Math.round(total/n):0,fijo,variable:total-fijo,ef,tr:total-ef,nprod}}
+const pKey=i=>norm(i.nombre)+'|'+unidadN(i.unidad);
+function pStats(d,rg){const mp=new Map();
+  gastosOnly(d).filter(g=>g.ts>=rg[0]&&g.ts<rg[1]).forEach(g=>gItems(g).forEach(i=>{const k=pKey(i);let e=mp.get(k);
+    if(!e){e={k,n:i.nombre,u:unidadN(i.unidad),units:0,total:0,gs:new Set(),last:0};mp.set(k,e)}
+    e.units+=i.cantidad;e.total+=i.total;e.gs.add(g.id);if(g.ts>=e.last){e.last=g.ts;e.n=i.nombre}}));
+  const arr=[...mp.values()],cnt={};
+  arr.forEach(e=>{e.compras=e.gs.size;e.avg=e.units?Math.round(e.total/e.units):0;const b=norm(e.n);cnt[b]=(cnt[b]||0)+1});
+  arr.forEach(e=>{e.label=e.n+(cnt[norm(e.n)]>1?' ('+e.u+')':'')});
+  return arr}
+function pHist(d,k){const a=[];gastosOnly(d).forEach(g=>gItems(g).forEach(i=>{if(pKey(i)===k)a.push({ts:g.ts,p:i.precio,id:g.id})}));return a.sort((x,y)=>x.ts-y.ts)}
+/* presupuesto mensual */
+const mkey=t=>{const x=new Date(t);return x.getFullYear()+'-'+pad2(x.getMonth()+1)};
+function presLimit(d,key){const L=(d.config&&d.config.presupuestos)||{};const ks=Object.keys(L).filter(k=>k<=key).sort();return ks.length?(L[ks[ks.length-1]]||0):0}
+const gastoMes=(d,t)=>sum(gastosOnly(d).filter(g=>g.ts>=mo0(t)&&g.ts<mo0(t,1)),g=>g.monto);
+function presAlert(d){const n=Date.now(),lim=presLimit(d,mkey(n));if(!lim)return '';const g=gastoMes(d,n),p=g/lim*100;
+  if(p>100)return '<div class="banner bad" style="margin:12px 0 0"><span>Superaste el presupuesto del mes por '+m(g-lim)+' ('+Math.round(p)+'%).</span><button data-a="gv" data-v="presupuesto">Ver</button></div>';
+  if(p>=80)return '<div class="banner warn" style="margin:12px 0 0"><span>Ya usaste el '+Math.round(p)+'% de tu presupuesto del mes. Te quedan '+m(lim-g)+'.</span><button data-a="gv" data-v="presupuesto">Ver</button></div>';
+  return ''}
+/* ---------- piezas visuales ---------- */
+const gSeg=(act,items,cur)=>'<div class="seg light'+(items.length>3?' s4':'')+'" role="group">'+items.map(x=>'<button data-a="'+act+'" data-v="'+x[0]+'" aria-pressed="'+(cur===x[0])+'">'+x[1]+'</button>').join('')+'</div>';
+const gChips=(act,items,cur)=>'<div class="chips" style="margin-top:10px">'+items.map(x=>'<button class="chip" data-a="'+act+'" data-v="'+x[0]+'" aria-pressed="'+(cur===x[0])+'">'+x[1]+'</button>').join('')+'</div>';
+function gDelta(now,prev){if(!prev)return '<span class="delta eq">Sin datos del período anterior</span>';const df=now-prev,p=Math.round(df/prev*100);
+  return '<span class="delta '+(df>0?'dn':df<0?'up':'eq')+'">'+(df===0?'Igual que el período anterior':mS(df)+' ('+(p>0?'+':'')+p+'%) vs período anterior')+'</span>'}
+const gRow=x=>'<button class="item" data-a="gdet" data-id="'+esc(x.id)+'"><span class="ava out">'+ico('up',20)+'</span><span class="mid"><div class="t">'+esc(x.concepto)+'</div><div class="d">'+gFecha(x.ts)+' · '+CLASES[claseDe(x)]+' · '+CUENTAS[ctaN(x.cuenta)]+(gItems(x).length?' · '+plural(gItems(x).length,'producto','productos'):'')+'</div></span><span class="r"><span class="amt num neg">'+mS(-x.monto)+'</span></span></button>';
+function gBuckets(r,pr){const span=(r[1]-r[0])/DAY,gran=span<=1?'h':span<=35?'d':'m';
+  const mk=(a0,b0)=>{const o=[];if(gran==='h'){for(let a=a0;a<b0;a+=3600000)o.push([a,a+3600000])}else if(gran==='d'){for(let a=a0;a<b0;a=addD(a,1))o.push([a,addD(a,1)])}else{let a=a0;while(a<b0){const nx=mo0(a,1);o.push([a,Math.min(nx,b0)]);a=nx}}return o};
+  const cur=mk(r[0],r[1]),prev=mk(pr[0],pr[1]);
+  const lab=([a])=>gran==='h'?String(new Date(a).getHours()):gran==='d'?String(new Date(a).getDate()):cap(new Date(a).toLocaleDateString('es-AR',{month:'short'}).replace('.',''));
+  const full=([a])=>gran==='h'?pad2(new Date(a).getHours())+':00 h':gran==='d'?gFecha(a):cap(new Date(a).toLocaleDateString('es-AR',{month:'long',year:'numeric'}));
+  return {gran,cur,prev,lab,full}}
+function gChart(cur,prev,labs,sel,cmp){
+  const W=560,H=190,L=46,R=8,T=10,B=26,n=cur.length,all=cur.concat(cmp?prev.slice(0,n):[]),mx=Math.max(0,...all);
+  const step=(()=>{const raw=(mx||100)/3,p=Math.pow(10,Math.floor(Math.log10(raw))),f=raw/p;return (f<=1?1:f<=2?2:f<=5?5:10)*p})();
+  const top=Math.ceil(mx/step)*step||step,y=v=>T+(top-v)/top*(H-T-B),cw=(W-L-R)/n,bw=Math.min(cmp?13:24,cw*(cmp?.4:.64)),z=y(0),every=Math.ceil(n/8);
+  let s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Evolución de gastos">';
+  for(let g=0;g<=top+1;g+=step)s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(g)+'" y2="'+y(g)+'" style="stroke:var(--line)" stroke-width="1"/><text x="'+(L-6)+'" y="'+(y(g)+4)+'" text-anchor="end" font-size="11" style="fill:var(--muted)">'+compact(g)+'</text>';
+  cur.forEach((v,i)=>{const cx=L+cw*i+cw/2,x0=cmp?cx-bw-1:cx-bw/2,h=Math.max(z-y(v),v?2:0);
+    if(cmp){const pv=prev[i]||0,ph=Math.max(z-y(pv),pv?2:0);s+='<rect x="'+(cx+1)+'" y="'+(z-ph)+'" width="'+bw+'" height="'+ph+'" rx="3" style="fill:var(--muted)" fill-opacity=".35"/>'}
+    s+='<rect x="'+x0+'" y="'+(z-h)+'" width="'+bw+'" height="'+h+'" rx="3" style="fill:var(--c-gasto)" fill-opacity="'+(i===sel?1:.5)+'"/>';
+    if(i%every===0)s+='<text x="'+cx+'" y="'+(H-8)+'" text-anchor="middle" font-size="11" style="fill:var(--muted)">'+labs[i]+'</text>';
+    s+='<rect x="'+(cx-cw/2)+'" y="0" width="'+cw+'" height="'+H+'" fill="transparent" data-a="gbar" data-i="'+i+'" style="cursor:pointer"/>'});
+  return s+'</svg>'}
+function gLine(H){
+  const pts=H.slice(-20),W=560,Hh=180,L=50,R=14,T=14,B=26,vs=pts.map(p=>p.p),mx=Math.max(...vs),mn=Math.min(...vs),pad=(mx-mn)||mx||1,lo=Math.max(0,mn-pad*.25),hi=mx+pad*.25;
+  const x=i=>L+(pts.length>1?i/(pts.length-1):.5)*(W-L-R),y=v=>T+(hi-v)/(hi-lo)*(Hh-T-B);
+  let s='<svg viewBox="0 0 '+W+' '+Hh+'" width="100%" role="img" aria-label="Evolución del precio unitario">';
+  [lo,(lo+hi)/2,hi].forEach(g=>{s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(g)+'" y2="'+y(g)+'" style="stroke:var(--line)"/><text x="'+(L-6)+'" y="'+(y(g)+4)+'" text-anchor="end" font-size="11" style="fill:var(--muted)">'+compact(Math.round(g))+'</text>'});
+  s+='<polyline fill="none" style="stroke:var(--accent)" stroke-width="2.5" stroke-linejoin="round" points="'+pts.map((p,i)=>x(i)+','+y(p.p)).join(' ')+'"/>';
+  pts.forEach((p,i)=>{s+='<circle cx="'+x(i)+'" cy="'+y(p.p)+'" r="4" style="fill:var(--accent)"/>'});
+  s+='<text x="'+L+'" y="'+(Hh-8)+'" font-size="11" style="fill:var(--muted)">'+fCorta(pts[0].ts)+'</text><text x="'+(W-R)+'" y="'+(Hh-8)+'" text-anchor="end" font-size="11" style="fill:var(--muted)">'+fCorta(pts[pts.length-1].ts)+'</text>';
+  return s+'</svg>'}
+/* ---------- Dinero con pestañas ---------- */
+function vDinero(d){
+  const tabs=[['ingresos','Ingresos'],['gastos','Gastos'],['haberes','Haberes']];
+  return '<div class="top"><h1>Dinero</h1></div><div class="dtabs" role="tablist" aria-label="Secciones de dinero">'+tabs.map(t=>'<button role="tab" data-a="dtab" data-v="'+t[0]+'" aria-selected="'+(S.dtab===t[0])+'">'+t[1]+'</button>').join('')+'</div><div class="dpane">'+
+    (S.dtab==='gastos'?vGastos(d):S.dtab==='haberes'?vHaberes(d):vIngresos(d))+'</div>'}
+function vHaberes(d){
+  const per=S.hp,r=rng(per),L=d.gastos.filter(g=>g.tipo==='haberes'&&g.ts>=r[0]&&g.ts<r[1]).sort((a,b)=>b.ts-a.ts);
+  return '<button class="btn" data-a="hnuevo">+ Nuevo pago de haberes</button>'+gChips('hper',[['hoy','Hoy'],['semana','Esta semana'],['mes','Este mes'],['todo','Todo']],per)+
+   '<div class="card" style="margin-top:12px"><div class="k">Total pagado en haberes</div><div class="v num">'+m(sum(L,g=>g.monto))+'</div><div class="s">'+plural(L.length,'pago','pagos')+' · '+(per==='todo'?'todo el historial':PER[per].toLowerCase())+'</div></div>'+
+   (L.length?'<div class="list" style="margin-top:12px">'+L.map(g=>movRow({k:'haberes',ts:g.ts,monto:g.monto,cuenta:ctaN(g.cuenta),t:g.concepto,ref:g.id})).join('')+'</div>':'<div class="empty" style="margin-top:12px"><b>Sin pagos de haberes</b>Registrá sueldos, adelantos o aguinaldos con el botón de arriba.</div>')}
+/* ---------- Gastos ---------- */
+function vGastos(d){
+  const g=S.g,rg=gRange(g.per),st=gStats(d,rg.r),pst=gStats(d,rg.pr),pres=g.v==='presupuesto';
+  let h='<button class="btn" data-a="gnuevo">+ Nuevo gasto</button>';
+  if(!pres){h+=gChips('gper',GPER,g.per);
+    if(g.per==='custom')h+='<div class="two" style="margin-top:8px"><div class="field"><label for="gdesde">Desde</label><input class="inp" type="date" id="gdesde" data-in="gdesde" value="'+esc(g.desde)+'"></div><div class="field"><label for="ghasta">Hasta</label><input class="inp" type="date" id="ghasta" data-in="ghasta" value="'+esc(g.hasta)+'"></div></div>';
+    h+='<p class="hint" style="margin-top:6px">Período: '+gFecha(rg.r[0])+' al '+gFecha(rg.r[1]-1)+'</p>'}
+  h+='<div style="margin-top:10px">'+gSeg('gv',[['resumen','Resumen'],['historial','Historial'],['productos','Productos'],['presupuesto','Presupuesto']],g.v)+'</div>';
+  return h+({resumen:gResumen,historial:gHistorial,productos:gProductos,presupuesto:gPresupuesto}[g.v]||gResumen)(d,rg,st,pst)}
+function gResumen(d,rg,st,pst){
+  const pf=v=>(st.total>0?String(Math.round(v/st.total*1000)/10).replace('.',','):'0')+'% del total',P=pStats(d,rg.r);
+  const ind=(k,v,s,x,span)=>'<div class="card"'+(span?' style="grid-column:1/-1"':'')+'><div class="k">'+k+'</div><div class="v num">'+v+'</div>'+(x||'')+'<div class="s">'+s+'</div></div>';
+  let h=presAlert(d);
+  h+='<div class="ind" style="margin-top:12px">'+ind('Gastos totales',m(st.total),plural(st.n,'gasto','gastos')+' en el período',gDelta(st.total,pst.total),true)+
+   ind('Cantidad de gastos',st.n,'Movimientos registrados')+ind('Gasto promedio',m(st.prom),st.n?'Por movimiento':'Sin movimientos')+
+   ind('Gastos fijos',m(st.fijo),pf(st.fijo))+ind('Gastos variables',m(st.variable),pf(st.variable))+
+   ind('En efectivo',m(st.ef),'Pagado en efectivo')+ind('Por transferencia',m(st.tr),'Pagado por transferencia')+
+   ind('Productos comprados',st.nprod?plural(P.length,'producto','productos'):'—',st.nprod?plural(st.nprod,'registro','registros')+' de compra detallados':'Ningún gasto con productos detallados',null,true)+'</div>';
+  /* evolución */
+  const bk=gBuckets(rg.r,rg.pr),G=gastosOnly(d),val=(a,b)=>sum(G.filter(x=>x.ts>=a&&x.ts<b),x=>x.monto);
+  const cur=bk.cur.map(([a,b])=>val(a,b)),prev=bk.prev.map(([a,b])=>val(a,b)),sel=(S.g.sel<0||S.g.sel>=cur.length)?cur.length-1:S.g.sel,labs=bk.cur.map(bk.lab);
+  h+='<div class="sec"><h2>Evolución de gastos</h2></div><div class="card">'+gChips('gcmp',[['0','Solo este período'],['1','Comparar con el anterior']],S.g.cmp?'1':'0')+'<div class="chart-wrap">'+gChart(cur,prev,labs,sel,S.g.cmp)+'</div>'+
+   '<div class="cap"><b>'+esc(bk.full(bk.cur[sel]))+'</b> · '+m(cur[sel])+(S.g.cmp?' &nbsp;|&nbsp; período anterior '+(bk.prev[sel]?m(prev[sel]):'—'):'')+'</div></div>';
+  /* fijo vs variable */
+  const pc=v=>st.total>0?v/st.total*100:0;
+  h+='<div class="sec"><h2>Fijos frente a variables</h2></div><div class="card">'+(st.total>0?'<div class="stk"><span style="width:'+pc(st.fijo)+'%;background:var(--accent)"></span><span style="width:'+pc(st.variable)+'%;background:var(--c-gasto)"></span></div>'+
+   '<div class="leg"><span><i style="background:var(--accent)"></i>Fijos</span><b class="num">'+m(st.fijo)+' · '+String(Math.round(pc(st.fijo)*10)/10).replace('.',',')+'%</b></div>'+
+   '<div class="leg"><span><i style="background:var(--c-gasto)"></i>Variables</span><b class="num">'+m(st.variable)+' · '+String(Math.round(pc(st.variable)*10)/10).replace('.',',')+'%</b></div>':'<p class="hint">Sin gastos en este período.</p>')+'</div>';
+  /* medios de pago */
+  const mr=[{n:'Efectivo',total:st.ef},{n:'Transferencia',total:st.tr}];
+  h+='<div class="sec"><h2>Medios de pago</h2></div><div class="card">'+(st.total>0?bars(mr,Math.max(1,st.ef,st.tr),''):'<p class="hint">Sin gastos en este período.</p>')+'</div>';
+  return h}
+function gHistList(d,rg){
+  const g=S.g,q=norm(g.q);
+  const L=gastosOnly(d).filter(x=>x.ts>=rg.r[0]&&x.ts<rg.r[1]&&(!g.tipo||claseDe(x)===g.tipo)&&(!g.medio||ctaN(x.cuenta)===g.medio)&&(!q||norm(x.concepto).includes(q)||gItems(x).some(i=>norm(i.nombre).includes(q))));
+  const cmp={'fecha-d':(a,b)=>b.ts-a.ts,'fecha-a':(a,b)=>a.ts-b.ts,'monto-d':(a,b)=>b.monto-a.monto,'monto-a':(a,b)=>a.monto-b.monto,'desc-a':(a,b)=>a.concepto.localeCompare(b.concepto,'es'),'desc-z':(a,b)=>b.concepto.localeCompare(a.concepto,'es')}[g.ord]||((a,b)=>b.ts-a.ts);
+  return L.sort(cmp)}
+function gHistorial(d,rg){
+  const g=S.g,L=gHistList(d,rg),tot=sum(L,x=>x.monto);
+  let h='<div class="search" style="margin-top:12px"><input class="inp" id="gq" data-in="gq" type="search" placeholder="Buscar por descripción o producto" value="'+esc(g.q)+'" autocomplete="off"></div>'+
+   gChips('gtipo',[['','Todos'],['fijo','Fijo'],['variable','Variable']],g.tipo)+gChips('gmedio',[['','Todos los medios'],['efectivo','Efectivo'],['banco','Transferencia']],g.medio)+
+   '<div class="field" style="margin-top:10px"><label for="gord">Ordenar por</label><select class="inp" id="gord" data-in="gord">'+[['fecha-d','Fecha (más reciente)'],['fecha-a','Fecha (más antigua)'],['monto-d','Importe (mayor a menor)'],['monto-a','Importe (menor a mayor)'],['desc-a','Descripción (A-Z)'],['desc-z','Descripción (Z-A)']].map(o=>'<option value="'+o[0]+'"'+(g.ord===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select></div>'+
+   '<div class="card" style="margin-top:12px"><div class="k">Total de los filtros aplicados</div><div class="v num">'+m(tot)+'</div><div class="s">'+plural(L.length,'gasto','gastos')+(L.length?' · <button class="link" data-a="gexp">Exportar CSV</button>':'')+'</div></div>';
+  if(!L.length)return h+'<div class="empty" style="margin-top:12px"><b>Sin gastos para mostrar</b>'+(g.q||g.tipo||g.medio?'Probá cambiando la búsqueda o los filtros.':'No hay gastos en este período. Registrá uno con el botón “Nuevo gasto”.')+'</div>';
+  return h+'<div class="list" style="margin-top:12px">'+L.map(gRow).join('')+'</div>'}
+function gRank(title,sub,arr,main,detail,val,unify){
+  const mx=Math.max(1,...arr.map(val));
+  return '<div class="sec"><h2>'+title+'</h2></div><div class="card"><p class="hint">'+sub+'</p><div class="clis">'+arr.map((e,i)=>'<div class="cli"><span class="rk'+(i<3?' top':'')+'">'+(i+1)+'</span><span class="mid"><b>'+esc(e.label)+'</b><small>'+detail(e)+'</small></span><b class="num">'+main(e)+'</b><span class="track"><span class="fill" style="width:'+Math.max(3,Math.round(val(e)/mx*100))+'%"></span></span>'+(unify?'<span style="grid-column:2/-1"><button class="link" data-a="gmerge" data-v="'+esc(e.k)+'">Unificar nombre</button></span>':'')+'</div>').join('')+'</div></div>'}
+function gPrecio(d){
+  const A=pStats(d,[0,Infinity]).sort((a,b)=>b.compras-a.compras||a.label.localeCompare(b.label,'es'));
+  let h='<div class="sec"><h2>Evolución del precio</h2></div><div class="card">';
+  if(!A.length)return h+'<p class="hint">Todavía no hay productos registrados. Cargá un gasto con productos para ver cómo cambia su precio.</p></div>';
+  const k=A.some(e=>e.k===S.g.prod)?S.g.prod:A[0].k,H=pHist(d,k);
+  h+='<p class="hint" style="margin-bottom:10px">Usa todo el historial de compras del producto. Solo se comparan precios en la misma unidad de medida.</p><div class="field"><label for="gprod">Producto</label><select class="inp" id="gprod" data-in="gprod">'+A.map(x=>'<option value="'+esc(x.k)+'"'+(x.k===k?' selected':'')+'>'+esc(x.label)+'</option>').join('')+'</select></div>';
+  if(H.length<2)return h+'<p class="hint" style="margin-top:12px">Todavía no hay datos suficientes para mostrar una evolución: hacen falta al menos dos compras de este producto ('+H.length+' registrada).</p></div>';
+  const a=H[H.length-2],b=H[H.length-1],df=b.p-a.p,pc=a.p?Math.round(df/a.p*1000)/10:0,cl=df>0?'neg':df<0?'pos':'';
+  h+='<div class="tiles3" style="margin-top:12px"><div class="card"><div class="k">Compra anterior</div><div class="v num">'+m(a.p)+'</div><div class="s">'+gFecha(a.ts)+'</div></div><div class="card"><div class="k">Última compra</div><div class="v num">'+m(b.p)+'</div><div class="s">'+gFecha(b.ts)+'</div></div><div class="card"><div class="k">Variación</div><div class="v num '+cl+'">'+mS(df)+'</div><div class="s">'+(pc>0?'+':'')+String(pc).replace('.',',')+'%</div></div></div>'+
+   '<div class="chart-wrap" style="margin-top:8px">'+gLine(H)+'</div><div class="cap">Precio por '+esc(pStatsUnit(A,k))+' en las últimas '+Math.min(H.length,20)+' compras</div>';
+  return h+'</div>'}
+const pStatsUnit=(A,k)=>{const e=A.find(x=>x.k===k);return e?e.u:'unidad'};
+function gProductos(d,rg){
+  const P=pStats(d,rg.r);let h='';
+  if(!P.length)h+='<div class="empty" style="margin-top:12px"><b>Sin productos en este período</b>Cuando cargues un gasto con productos detallados vas a ver cuáles comprás más y en cuáles gastás más. Los gastos sin productos no entran en estos rankings.</div>';
+  else{
+    const A=P.slice().sort((a,b)=>b.units-a.units||b.total-a.total).slice(0,10),B=P.slice().sort((a,b)=>b.total-a.total).slice(0,10),C=P.slice().sort((a,b)=>b.compras-a.compras||b.last-a.last).slice(0,10);
+    h+=gRank('Más comprados','Por unidades compradas (top 10). Productos con distinta unidad de medida no son equivalentes.',A,e=>qty(e.units)+' '+uShort(e.u),e=>plural(e.compras,'compra','compras')+' · '+m(e.total)+' · prom. '+m(e.avg)+'/'+uShort(e.u)+' · última '+gFecha(e.last),e=>e.units,true)+
+      gRank('Mayor gasto','Los productos en los que más dinero gastaste (top 10).',B,e=>m(e.total),e=>qty(e.units)+' '+uShort(e.u)+' · '+plural(e.compras,'compra','compras')+' · prom. '+m(e.avg)+'/'+uShort(e.u),e=>e.total,false)+
+      gRank('Frecuencia de compra','Cantidad de compras en las que aparece cada producto, no de unidades.',C,e=>plural(e.compras,'compra','compras'),e=>'última compra '+gFecha(e.last)+' · '+qty(e.units)+' '+uShort(e.u)+' en total',e=>e.compras,false)}
+  h+=gPrecio(d);
+  const R=[];gastosOnly(d).filter(g=>g.ts>=rg.r[0]&&g.ts<rg.r[1]).sort((a,b)=>b.ts-a.ts).forEach(g=>gItems(g).forEach(i=>R.push({g,i})));
+  h+='<div class="sec"><h2>Compras recientes</h2></div>'+(R.length?'<div class="list">'+R.slice(0,12).map(({g,i})=>'<button class="item" data-a="gdet" data-id="'+esc(g.id)+'"><span class="ava">'+esc((i.nombre||'?').charAt(0).toUpperCase())+'</span><span class="mid"><div class="t">'+esc(i.nombre)+'</div><div class="d">'+gFecha(g.ts)+' · '+qty(i.cantidad)+' '+uShort(unidadN(i.unidad))+' × '+m(i.precio)+'</div></span><span class="r"><span class="amt num">'+m(i.total)+'</span></span></button>').join('')+'</div>':'<div class="empty"><b>Sin compras de productos</b>Los productos que detalles en tus gastos aparecen acá, y podés abrir el gasto original.</div>');
+  return h}
+function gPresupuesto(d){
+  const n=Date.now(),key=mkey(n),lim=presLimit(d,key),gas=gastoMes(d,n),p=lim?gas/lim*100:0;
+  const col=p>100?'var(--bad)':p>=80?'var(--warn)':'var(--ok)';
+  let h='<div class="card" style="margin-top:12px"><div class="k">Presupuesto de '+esc(cap(new Date(n).toLocaleDateString('es-AR',{month:'long',year:'numeric'})))+'</div>';
+  if(!lim)h+='<p class="hint" style="margin:8px 0 12px">Todavía no definiste un límite mensual de gastos. Con un límite vas a ver cuánto te queda y recibir avisos al llegar al 80% y al superarlo.</p><button class="btn" data-a="gpres">Definir límite mensual</button>';
+  else h+='<div class="v num">'+m(gas)+' <small style="font-size:15px;color:var(--muted);font-weight:600">de '+m(lim)+'</small></div><div class="pbar"><span style="width:'+Math.min(100,p)+'%;background:'+col+'"></span></div>'+
+    '<div class="s">'+String(Math.round(p*10)/10).replace('.',',')+'% consumido · '+(p>100?'<b class="neg">superado por '+m(gas-lim)+'</b>':'te quedan <b>'+m(lim-gas)+'</b>')+'</div>'+
+    (p>100?'<div class="banner bad" style="margin:12px 0 0"><span>Superaste el presupuesto del mes.</span></div>':p>=80?'<div class="banner warn" style="margin:12px 0 0"><span>Llegaste al 80% del presupuesto. Cuidá los próximos gastos.</span></div>':'')+
+    '<button class="btn ghost" style="margin-top:12px" data-a="gpres">Cambiar límite</button>';
+  h+='</div><p class="hint" style="margin-top:8px">Cuenta solo los gastos (no los pagos de haberes). El límite se mantiene cada mes hasta que lo cambies.</p>';
+  const rows=[];for(let i=0;i<12;i++){const t=mo0(n,-i),l=presLimit(d,mkey(t));if(l>0)rows.push({t,l,g:gastoMes(d,t),cur:i===0})}
+  h+='<div class="sec"><h2>Historial de cumplimiento</h2></div>';
+  if(!rows.length)return h+'<div class="empty"><b>Todavía no hay historial</b>Cuando definas un límite, acá vas a ver mes a mes si lo cumpliste.</div>';
+  return h+'<div class="list">'+rows.map(r=>{const pp=Math.round(r.g/r.l*100),ok=r.g<=r.l;return '<div class="item"><span class="mid"><div class="t">'+esc(cap(new Date(r.t).toLocaleDateString('es-AR',{month:'long',year:'numeric'})))+'</div><div class="d">'+m(r.g)+' de '+m(r.l)+' · '+pp+'%</div></span><span class="r"><span class="tag '+(r.cur?'pendiente':ok?'cobrada':'devuelta')+'">'+(r.cur?'En curso':ok?'Cumplido':'Superado')+'</span></span></div>'}).join('')+'</div>'}
+/* ---------- formularios del módulo de gastos ---------- */
+const blankG=()=>({nombre:'',cantidad:'1',unidad:'',precio:''});
+const numStr=n=>String(n).replace('.',',');
+function gItemHtml(it,i){
+  const id=x=>x+'-'+i;
+  return '<div class="itm gi" data-i="'+i+'"><div class="itm-h"><b>Producto '+(i+1)+'</b><button type="button" class="link" data-a="grm" data-i="'+i+'">Quitar</button></div>'+
+  '<div class="field"><label for="'+id('gn')+'">Nombre</label><input class="inp gi-n" id="'+id('gn')+'" list="dl-gp" autocomplete="off" autocapitalize="sentences" placeholder="Ej: Café, Leche, Carne molida" value="'+esc(it.nombre)+'"></div>'+
+  '<div class="two"><div class="field"><label for="'+id('gc')+'">Cantidad</label><input class="inp gi-c" id="'+id('gc')+'" data-in="gcalc" inputmode="decimal" value="'+esc(it.cantidad)+'"></div><div class="field"><label for="'+id('gu')+'">Unidad (opcional)</label><input class="inp gi-u" id="'+id('gu')+'" list="dl-gu" autocomplete="off" placeholder="unidad" value="'+esc(it.unidad)+'"></div></div>'+
+  '<div class="field"><label for="'+id('gp')+'">Precio unitario ($)</label><input class="inp gi-p" id="'+id('gp')+'" data-in="gcalc" inputmode="decimal" placeholder="0" value="'+esc(it.precio)+'"></div>'+
+  '<div class="itm-sub"><span>Subtotal</span><b class="num gi-sub">$ 0</b></div></div>'}
+const gItemsHtml=a=>a.length?a.map(gItemHtml).join(''):'<p class="hint">Sin productos: el gasto se registra como un importe general.</p>';
+const readG=()=>[...document.querySelectorAll('#gitems .gi')].map(r=>({nombre:r.querySelector('.gi-n').value,cantidad:r.querySelector('.gi-c').value,unidad:r.querySelector('.gi-u').value,precio:r.querySelector('.gi-p').value}));
+function drawG(){const b=$('#gitems');if(b){b.innerHTML=gItemsHtml(S.sheet.items);calcG()}}
+function calcG(){
+  let tot=0,rows=0;
+  document.querySelectorAll('#gitems .gi').forEach(r=>{rows++;const c=parseAR(r.querySelector('.gi-c').value),p=parseAR(r.querySelector('.gi-p').value),s=(isFinite(c)&&isFinite(p)&&c>0&&p>=0)?Math.round(c*toC(p)):0;tot+=s;r.querySelector('.gi-sub').textContent=m(s)});
+  const mo=document.getElementById('gm-monto'),info=document.getElementById('gm-info');if(!mo)return;
+  if(tot>0&&(mo.dataset.auto==='1'||!mo.value.trim())){mo.value=inputNum(tot);mo.dataset.auto='1'}
+  else if(!rows&&mo.dataset.auto==='1'){mo.value='';}
+  if(info){const im=toC(parseAR(mo.value));
+    info.innerHTML=rows?'<span>Total de productos</span><b class="num">'+m(tot)+'</b>':'';
+    if(rows&&isFinite(im)&&im>tot&&tot>0)info.innerHTML+='<span style="grid-column:1/-1;display:block;font-size:13px;margin-top:2px">Otros conceptos (sin detallar): <b>'+m(im-tot)+'</b></span>';
+    if(rows&&isFinite(im)&&im<tot)info.innerHTML+='<span style="grid-column:1/-1;display:block;color:var(--bad);font-size:13px;margin-top:2px">El importe total no puede ser menor que la suma de los productos.</span>'}}
+function shGastoM(sh){
+  const old=sh.id?D().gastos.find(x=>x.id===sh.id):null;
+  const o=old||{ts:Date.now(),concepto:'',monto:0,cuenta:'efectivo',clase:'variable',notas:''};
+  const names=[],seen=new Set();gastosOnly(D()).slice().sort((a,b)=>b.ts-a.ts).forEach(g=>gItems(g).forEach(i=>{const k=norm(i.nombre);if(k&&!seen.has(k)){seen.add(k);names.push(i.nombre)}}));
+  const dl=(id,a)=>'<datalist id="'+id+'">'+a.map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist>';
+  const its=sh.items,auto=!old||(gItems(old).length&&sum(gItems(old),i=>i.total)===old.monto);
+  return head(old?'Editar gasto':'Nuevo gasto')+'<div class="form">'+
+  '<div class="field"><label for="gm-con">Descripción</label><input class="inp" id="gm-con" autocomplete="off" placeholder="Ej: Compra de supermercado, Combustible, Alquiler" value="'+esc(o.concepto)+'"></div>'+
+  '<div class="field"><label for="gm-monto">Importe total ($)</label><input class="inp" id="gm-monto" data-in="gmonto"'+(auto?' data-auto="1"':'')+' inputmode="decimal" placeholder="0" value="'+inputNum(o.monto)+'"></div>'+
+  '<div class="field"><label for="gm-ts">Fecha</label><input class="inp" type="datetime-local" id="gm-ts" value="'+toInput(o.ts)+'"></div>'+
+  '<div class="field"><span class="lab">Tipo de gasto</span>'+chipsOf('clase',[['fijo','Fijo'],['variable','Variable']],claseDe(o))+'</div>'+
+  '<div class="field"><span class="lab">Medio de pago</span>'+chipsOf('cuenta',cuentaOpts(),ctaN(o.cuenta))+'</div>'+
+  '<div class="field"><label for="gm-notas">Notas (opcional)</label><textarea class="inp" id="gm-notas" rows="2" placeholder="Información adicional">'+esc(o.notas)+'</textarea></div>'+
+  '<div class="sec" style="margin:6px 2px 0"><h2 style="font-size:16px">Productos comprados <small style="color:var(--muted);font-weight:500">(opcional)</small></h2></div>'+
+  '<p class="hint" style="margin-top:-8px">Detallalos para saber después cuáles comprás más y cuánto gastás en cada uno.</p>'+
+  '<div id="gitems" class="form">'+gItemsHtml(its)+'</div>'+
+  '<button type="button" class="btn ghost" data-a="gadd">+ Agregar producto</button><div class="itm-sub" id="gm-info" style="display:grid;grid-template-columns:1fr auto"></div>'+
+  dl('dl-gp',names)+dl('dl-gu',UNIDADES)+'</div>'+
+  '<div class="sh-foot"><div class="err" id="gm-err" role="alert"></div><button class="btn" data-a="save-gm">'+(old?'Guardar cambios':'Guardar gasto')+'</button></div>'}
+async function doSaveGM(){
+  const sh=S.sheet,old=sh.id?D().gastos.find(x=>x.id===sh.id):null,err=t=>{$('#gm-err').textContent=t};
+  const concepto=val('gm-con').trim();if(!concepto)return err('Escribí la descripción del gasto.');
+  const raw=readG(),items=[];
+  for(let i=0;i<raw.length;i++){const r=raw[i];
+    if(!r.nombre.trim()&&!r.precio.trim()&&(r.cantidad.trim()===''||r.cantidad.trim()==='1')&&!r.unidad.trim())continue;
+    const E=t=>err('Producto '+(i+1)+': '+t),c=parseAR(r.cantidad),p=parseAR(r.precio);
+    if(!r.nombre.trim())return E('escribí el nombre.');
+    if(!(c>0))return E('la cantidad tiene que ser mayor a 0.');
+    if(isNaN(p)||p<0)return E('ingresá el precio unitario.');
+    const pc=toC(p);items.push({nombre:r.nombre.trim(),cantidad:c,unidad:r.unidad.trim()?unidadN(r.unidad):'',precio:pc,total:Math.round(c*pc)})}
+  const pt=sum(items,i=>i.total);let monto=val('gm-monto').trim()?toC(parseAR(val('gm-monto'))):(pt||NaN);
+  if(isNaN(monto)||!(monto>0))return err('Ingresá el importe total del gasto.');
+  if(items.length&&monto<pt)return err('El importe total ('+m(monto)+') no puede ser menor que la suma de los productos ('+m(pt)+').');
+  let ts=new Date(val('gm-ts')).getTime();if(!isFinite(ts))ts=Date.now();
+  const doc=Object.assign({},old||{},{ts,tipo:'gasto',concepto,monto,cuenta:grpVal('cuenta')||'efectivo',clase:grpVal('clase')||'variable',notas:val('gm-notas').trim(),items,upd:Date.now()});
+  try{await put('gastos',old?old.id:newId(),doc);
+    await log(old?'Gasto "'+concepto+'" editado'+(old.monto!==monto?': '+m(old.monto)+' → '+m(monto):''):'Gasto "'+concepto+'" por '+m(monto));
+    closeSheet();toast(old?'Cambios guardados':'Gasto guardado')}catch(e){err('No se pudo guardar. Probá de nuevo.')}}
+function shGastoDet(sh){
+  const g=D().gastos.find(x=>x.id===sh.id);if(!g)return null;
+  const its=gItems(g),pt=sum(its,i=>i.total),kv=(k,v)=>v?'<dt>'+k+'</dt><dd>'+v+'</dd>':'';
+  let h=head(esc(g.concepto))+'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div class="num" style="font-size:32px;font-weight:800">'+m(g.monto)+'</div><span class="tag '+(claseDe(g)==='fijo'?'parcial':'cancelada')+'">'+CLASES[claseDe(g)]+'</span></div>';
+  if(g.demo)h+='<div class="banner"><span>Esto es un ejemplo. Registrá tu primer gasto o venta para empezar.</span></div>';
+  h+='<div class="card"><dl class="kv" style="margin:0">'+kv('Fecha',gFecha(g.ts)+' · '+fHora(g.ts))+kv('Tipo de gasto',CLASES[claseDe(g)])+kv('Medio de pago',CUENTAS[ctaN(g.cuenta)])+kv('Notas',esc(g.notas))+'</dl></div>';
+  if(its.length){h+='<div class="sec" style="margin-top:16px"><h2 style="font-size:16px">Productos ('+its.length+')</h2></div><div class="card"><ul class="hist its">'+its.map(i=>'<li class="itl"><span class="mid"><b>'+esc(i.nombre)+'</b><small>'+qty(i.cantidad)+' '+uShort(unidadN(i.unidad))+' × '+m(i.precio)+'</small></span><b class="num">'+m(i.total)+'</b></li>').join('')+'</ul>'+
+    '<dl class="kv" style="margin:12px 0 0;padding-top:10px;border-top:1px solid var(--line)">'+kv('Total de productos','<b>'+m(pt)+'</b>')+(g.monto>pt?kv('Otros conceptos',m(g.monto-pt)):'')+'</dl></div>'}
+  else h+='<p class="hint" style="margin-top:12px">Gasto general, sin productos detallados.</p>';
+  if(g.demo)return h;
+  return h+'<div class="btns" style="margin-top:16px"><button class="btn sec2" data-a="gedit" data-id="'+esc(g.id)+'">Editar</button><button class="btn ghost" data-a="gdel" data-id="'+esc(g.id)+'">Eliminar</button></div>'}
+function shMerge(sh){
+  const A=pStats(D(),[0,Infinity]),e=A.find(x=>x.k===sh.k);if(!e)return null;
+  const dl='<datalist id="dl-mg">'+A.filter(x=>x.k!==e.k).map(x=>'<option value="'+esc(x.n)+'">').join('')+'</datalist>';
+  return head('Unificar nombre')+'<p class="hint" style="margin:-6px 0 14px">Todas las compras de “'+esc(e.label)+'” van a pasar a llamarse como escribas acá. Si ya existe otro producto con ese nombre, sus estadísticas se juntan. Los precios históricos no cambian.</p><div class="form">'+
+   '<div class="field"><label for="mg-name">Nombre correcto</label><input class="inp" id="mg-name" list="dl-mg" autocomplete="off" value="'+esc(e.n)+'"></div>'+dl+
+   '<div class="err" id="mg-err" role="alert"></div><button class="btn" data-a="save-merge">Unificar</button></div>'}
+async function doMerge(){
+  const sh=S.sheet,nn=val('mg-name').trim(),err=t=>{$('#mg-err').textContent=t};if(!nn)return err('Escribí el nombre.');
+  const jobs=D().gastos.filter(g=>g.tipo==='gasto'&&gItems(g).some(i=>pKey(i)===sh.k));
+  try{await pool(jobs,async g=>{const c=cloneV(g);c.items=c.items.map(i=>pKey(i)===sh.k?Object.assign({},i,{nombre:nn}):i);await put('gastos',g.id,c)},4);
+    await log('Producto unificado como "'+nn+'" ('+plural(jobs.length,'compra','compras')+')');closeSheet();toast('Nombre unificado')}catch(e){err('No se pudo guardar. Probá de nuevo.')}}
+function shPres(){
+  const key=mkey(Date.now()),lim=presLimit(D(),key);
+  return head('Presupuesto mensual')+'<p class="hint" style="margin:-6px 0 14px">Límite de gastos por mes. Se aplica desde este mes y se mantiene hasta que lo cambies.</p><div class="form">'+
+   '<div class="field"><label for="pr-lim">Límite mensual ($)</label><input class="inp" id="pr-lim" inputmode="decimal" placeholder="0" value="'+inputNum(lim)+'"></div>'+
+   '<div class="err" id="pr-err" role="alert"></div><button class="btn" data-a="save-pres">Guardar límite</button>'+(lim?'<button class="btn ghost" data-a="pres-off">Quitar límite</button>':'')+'</div>'}
+async function doSavePres(off){
+  if(D().demo)return $('#pr-err').textContent='Es un ejemplo. Registrá tu primer gasto o venta para empezar.';
+  const key=mkey(Date.now());let v=0;
+  if(!off){v=toC(parseAR(val('pr-lim')));if(!(v>0))return $('#pr-err').textContent='Ingresá un límite mayor a 0.'}
+  const cur=Object.assign({},(S.config&&S.config.presupuestos)||{});cur[key]=v;
+  try{await put('meta','config',Object.assign({},S.config,{presupuestos:cur}));await log(off?'Presupuesto mensual quitado':'Presupuesto mensual: '+m(v));closeSheet();toast(off?'Límite quitado':'Límite guardado')}catch(e){$('#pr-err').textContent='No se pudo guardar. Probá de nuevo.'}}
+
 /* ---------- hojas (formularios y detalle) ---------- */
 const cloneV=o=>JSON.parse(JSON.stringify(o));
 const findV=id=>D().ventas.find(o=>o.id===id);
@@ -381,15 +649,17 @@ const chipsOf=(grp,opts,cur)=>'<div class="opts" role="group" data-grp="'+grp+'"
 const grpVal=g=>{const e=document.querySelector('[data-grp="'+g+'"] [aria-pressed="true"]');return e?e.dataset.v:''};
 const blankItem=()=>({producto:'',variante:'',cantidad:'1',precio:'',costo:'',categoria:''});
 function openSheet(sh){
-  const f={detalle:shDetalle,venta:shVenta,cobro:shCobro,gasto:shGasto,transf:shTransf,saldos:shSaldos,confirm:shConfirm}[sh.type];
+  const f={detalle:shDetalle,venta:shVenta,cobro:shCobro,gasto:shGasto,transf:shTransf,saldos:shSaldos,confirm:shConfirm,gastoM:shGastoM,gastoDet:shGastoDet,merge:shMerge,pres:shPres}[sh.type];
   const prev=document.querySelector('.sheet'),top=prev?prev.scrollTop:0;
   if(sh.type==='venta'&&!sh.items){const old=sh.id?findV(sh.id):null;
     sh.items=old?itemsOf(old).map(i=>({producto:i.producto||'',variante:i.variante||'',cantidad:qty(i.cantidad),precio:inputNum(i.precio),costo:inputNum(i.costo),categoria:i.categoria||''})):[blankItem()]}
+  if(sh.type==='gastoM'&&!sh.items){const og=sh.id?D().gastos.find(x=>x.id===sh.id):null;sh.items=og?gItems(og).map(i=>({nombre:i.nombre,cantidad:numStr(i.cantidad),unidad:i.unidad||'',precio:inputNum(i.precio)})):[]}
   S.sheet=sh;
   const html=f(sh);if(html==null){closeSheet();return}
-  $('#layer').innerHTML='<div class="scrim" data-a="scrim"><div class="sheet'+(sh.type==='venta'?' fx':'')+(prev?' noanim':'')+'" role="dialog" aria-modal="true">'+html+'</div></div>';
+  $('#layer').innerHTML='<div class="scrim" data-a="scrim"><div class="sheet'+(sh.type==='venta'||sh.type==='gastoM'?' fx':'')+(prev?' noanim':'')+'" role="dialog" aria-modal="true">'+html+'</div></div>';
   lockScroll(true);
   if(prev&&sh.type==='detalle')document.querySelector('.sheet').scrollTop=top;
+  if(sh.type==='gastoM')calcG();
   if(sh.type==='venta'){calcTotal();if(!sh.id&&window.matchMedia&&matchMedia('(hover:hover)').matches)setTimeout(()=>{const e=document.querySelector('.i-prod');if(e)e.focus({preventScroll:true})},60)}}
 function readItems(){return [...document.querySelectorAll('#items .itm')].map(r=>{const v=r.querySelector('.vars [aria-pressed="true"]');return {producto:r.querySelector('.i-prod').value,variante:v?v.dataset.v:'',cantidad:r.querySelector('.i-cant').value,precio:r.querySelector('.i-precio').value,costo:r.querySelector('.i-costo').value,categoria:r.querySelector('.i-cat').value}})}
 function calcTotal(){let t=0;const rows=document.querySelectorAll('#items .itm');
@@ -619,6 +889,32 @@ document.addEventListener('click',async ev=>{
   case 'filtros':S.f.open=!S.f.open;render();break;
   case 'limpiar':Object.assign(S.f,{estado:'todas',per:'mes',q:'',medio:'',cat:'',producto:'',variante:'',cliente:'',envio:'',mmin:'',mmax:'',desde:'',hasta:''});render();break;
   case 'dfilt':S.dfilt=v;render();break;
+  case 'hday':S.hday=v;render();break;
+  case 'dtab':S.dtab=v;render();break;
+  case 'hper':S.hp=v;render();break;
+  case 'hnuevo':openSheet({type:'gasto',tipo:'haberes'});break;
+  case 'gper':S.g.per=v;S.g.sel=-1;render();break;
+  case 'gv':S.g.v=v;render();break;
+  case 'gcmp':S.g.cmp=(v==='1');render();break;
+  case 'gbar':S.g.sel=+el.dataset.i;render();break;
+  case 'gtipo':S.g.tipo=v;render();break;
+  case 'gmedio':S.g.medio=v;render();break;
+  case 'gnuevo':openSheet({type:'gastoM'});break;
+  case 'gdet':openSheet({type:'gastoDet',id});break;
+  case 'gedit':openSheet({type:'gastoM',id});break;
+  case 'gdel':{const gx=D().gastos.find(x=>x.id===id);if(!gx)break;confirmar('Eliminar gasto','Se borra "'+gx.concepto+'" por '+m(gx.monto)+(gItems(gx).length?' y sus '+plural(gItems(gx).length,'producto','productos'):'')+'. Los totales y estadísticas se actualizan.','Eliminar',async()=>{try{await del('gastos',id);await log('Gasto eliminado: "'+gx.concepto+'" por '+m(gx.monto));closeSheet();toast('Gasto eliminado')}catch(e){toast('No se pudo eliminar.')}},true);break}
+  case 'gadd':{S.sheet.items=readG();S.sheet.items.push(blankG());drawG();const rows=document.querySelectorAll('#gitems .gi'),last=rows[rows.length-1];if(last){last.scrollIntoView({block:'nearest'});const f=last.querySelector('.gi-n');if(f)f.focus({preventScroll:true})}break}
+  case 'grm':{S.sheet.items=readG();S.sheet.items.splice(+el.dataset.i,1);drawG();break}
+  case 'gmerge':if(demoBlock())break;openSheet({type:'merge',k:v});break;
+  case 'gpres':if(demoBlock())break;openSheet({type:'pres'});break;
+  case 'save-gm':await doSaveGM();break;
+  case 'save-merge':await doMerge();break;
+  case 'save-pres':await doSavePres(false);break;
+  case 'pres-off':await doSavePres(true);break;
+  case 'gexp':{const rg=gRange(S.g.per),L=gHistList(D(),rg);if(!L.length){toast('No hay gastos para exportar.');break}
+    const rows=[['Fecha','Descripción','Importe','Tipo de gasto','Medio de pago','Producto','Cantidad','Unidad','Precio unitario','Subtotal producto','Notas']];
+    L.forEach(x=>{const its=gItems(x);if(!its.length)rows.push([gFecha(x.ts),x.concepto,csvNum(x.monto),CLASES[claseDe(x)],CUENTAS[ctaN(x.cuenta)],'','','','','',x.notas||'']);else its.forEach((i,k)=>rows.push([gFecha(x.ts),x.concepto,k===0?csvNum(x.monto):'',CLASES[claseDe(x)],CUENTAS[ctaN(x.cuenta)],i.nombre,String(i.cantidad).replace('.',','),unidadN(i.unidad),csvNum(i.precio),csvNum(i.total),k===0?(x.notas||''):'']))});
+    await saveFile('argyr-gastos-'+stamp()+'.csv',csv(rows));break}
   case 'sp':S.sp=v;render();break;
   case 'evo':S.evo=v;render();break;
   case 'span':S.span=v;S.sel=-1;render();break;
@@ -630,7 +926,7 @@ document.addEventListener('click',async ev=>{
   case 'mov':
     if(el.dataset.k==='cobro')openSheet({type:'detalle',id});
     else if(demoBlock())break;
-    else if(el.dataset.k==='transf')openSheet({type:'transf',id});else openSheet({type:'gasto',id});break;
+    else if(el.dataset.k==='transf')openSheet({type:'transf',id});else if(el.dataset.k==='gasto')openSheet({type:'gastoDet',id});else openSheet({type:'gasto',id});break;
   case 'gasto':openSheet({type:'gasto',tipo:v});break;
   case 'transf':openSheet({type:'transf'});break;
   case 'saldos':openSheet({type:'saldos'});break;
@@ -639,7 +935,7 @@ document.addEventListener('click',async ev=>{
   case 'step':{const i=el.closest('.itm').querySelector('.i-cant'),n=parseAR(i.value)||0;i.value=qty(Math.max(1,Math.round((n+ +el.dataset.d)*1000)/1000));calcTotal();break}
   case 'add-item':{S.sheet.items=readItems();S.sheet.items.push(blankItem());drawItems();const rows=document.querySelectorAll('#items .itm'),last=rows[rows.length-1];if(last){last.scrollIntoView({block:'nearest'});const f=last.querySelector('.i-prod');if(f)f.focus({preventScroll:true})}break}
   case 'tog':{const was=el.getAttribute('aria-pressed')==='true';el.closest('[data-grp]').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed','false'));if(!was)el.setAttribute('aria-pressed','true');break}
-  case 'ir-gastos':S.tab='dinero';S.dfilt='gastos';window.scrollTo(0,0);render();break;
+  case 'ir-gastos':S.tab='dinero';S.dtab='gastos';window.scrollTo(0,0);render();break;
   case 'var':{const row=el.closest('.itm'),was=el.getAttribute('aria-pressed')==='true',pr=row.querySelector('.i-precio');
     el.closest('.vars').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed','false'));if(!was)el.setAttribute('aria-pressed','true');
     if(pr.dataset.auto==='1'){pr.value='';delete pr.dataset.auto}fillRow(row);calcTotal();break}
@@ -678,6 +974,13 @@ document.addEventListener('click',async ev=>{
 document.addEventListener('input',ev=>{
   const t=ev.target,k=t.dataset&&t.dataset.in;
   if(k==='calc'){if(t.classList.contains('i-precio'))delete t.dataset.auto;calcTotal();return}
+  if(k==='gcalc'){calcG();return}
+  if(k==='gmonto'){delete t.dataset.auto;calcG();return}
+  if(k==='gq'){S.g.q=t.value;render();return}
+  if(k==='gord'){S.g.ord=t.value;render();return}
+  if(k==='gprod'){S.g.prod=t.value;render();return}
+  if(k==='gdesde'){S.g.desde=t.value;render();return}
+  if(k==='ghasta'){S.g.hasta=t.value;render();return}
   if(k==='q'){S.f.q=t.value;render();return}
   if(k&&k.slice(0,2)==='f:'){S.f[k.slice(2)]=t.value;render();return}
   if(k==='fmedio'){S.f.medio=t.value;render();return}

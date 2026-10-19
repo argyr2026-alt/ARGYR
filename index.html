@@ -51,7 +51,8 @@ h1,h2,h3{font-family:var(--f-display);margin:0;text-wrap:balance}
 .accts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .acct{background:rgba(255,255,255,.14);border-radius:14px;padding:10px 10px 9px;min-width:0}
 .acct small{display:block;font-size:12px;opacity:.8}
-.acct b{font-size:15px;display:block;overflow-wrap:anywhere}
+.acct b{font-size:clamp(12px,3.7vw,15px);display:block;overflow-wrap:anywhere}
+button.acct{border:0;text-align:left;width:100%;color:#fff;font:inherit;cursor:pointer}
 .per{display:flex;gap:6px;flex-wrap:wrap}.per button{padding:6px 12px;border-radius:99px;font-size:13px;font-weight:600;background:rgba(255,255,255,.14);color:#fff}.per button[aria-pressed="true"]{background:#fff;color:#4338CA}
 .seg{display:flex;background:rgba(255,255,255,.16);border-radius:18px;padding:4px;gap:2px}
 .seg button{flex:1;padding:9px 6px;border-radius:14px;font-size:13.5px;font-weight:600;color:rgba(255,255,255,.85);min-width:0}
@@ -153,7 +154,7 @@ details summary{cursor:pointer;color:var(--accent);font-weight:600;font-size:14p
 .set{display:flex;flex-direction:column;gap:10px}
 .set .btn{text-align:left;display:flex;justify-content:space-between;align-items:center;font-weight:600;font-size:15px;padding:14px 16px}
 .hint{color:var(--muted);font-size:13px;margin:0}
-@media (max-width:380px){.hero .big{font-size:34px}.accts{grid-template-columns:1fr}}
+@media (max-width:380px){.hero .big{font-size:34px}}
 
 /* hoja con encabezado y pie fijos; solo el contenido del medio se desplaza */
 .sheet{padding:0 max(16px,env(safe-area-inset-left,0px)) 0 max(16px,env(safe-area-inset-right,0px));max-height:92vh;max-height:92dvh;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
@@ -198,6 +199,33 @@ input[type="date"]::-webkit-date-and-time-value,input[type="datetime-local"]::-w
 .cli .fill{display:block;height:100%;border-radius:99px;background:var(--accent)}
 
 .logo{display:block;width:56px;height:65px;color:#016FEB;margin-bottom:8px}
+
+/* ---- adaptable: celular chico, tablet y computadora ---- */
+@media (max-width:360px){.nav button.t{font-size:10.5px}.nav-in{grid-template-columns:1fr 1fr 64px 1fr 1fr}.nav .plus{width:52px;height:52px}.top h1{font-size:23px}.hero .big{font-size:32px}.item .amt{font-size:15px}.btns .btn{min-width:110px}}
+@media (min-width:700px){
+  body{padding-bottom:110px}
+  .app{max-width:880px;padding-top:24px}
+  .ind{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start}
+  .list.cards3{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .set{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .hero{padding:26px}.hero .big{font-size:48px}
+  .scrim{align-items:center;padding:24px}
+  .sheet{max-width:600px;border-radius:26px;max-height:90vh;max-height:90dvh}
+  .nav-in{max-width:640px}
+  .toast{max-width:480px}
+}
+@media (min-width:1024px){
+  body{padding-left:calc(296px + env(safe-area-inset-left,0px));padding-right:24px;padding-bottom:40px}
+  .app{max-width:1000px}
+  .nav{right:auto;top:0;bottom:0;width:272px;padding:20px 16px}
+  .nav-in{max-width:none;height:100%;display:flex;flex-direction:column;align-items:stretch;gap:6px;border-radius:24px;padding:16px 12px;box-shadow:var(--shadow)}
+  .nav button.t{flex-direction:row;gap:12px;justify-content:flex-start;padding:13px 14px;font-size:15px;border-radius:14px}
+  .nav button.t[aria-current="page"]{background:var(--accent-soft)}
+  .nav .plus{order:-1;width:100%;height:52px;border-radius:16px;margin:0 0 14px;border:0;display:flex;gap:8px;align-items:center;justify-content:center;font-weight:700}
+  .nav .plus::after{content:"Registrar venta";font-size:15px}
+  .toast{bottom:32px}
+}
 
 html{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
 body{margin:0}[hidden]{display:none!important}

@@ -1,7 +1,11 @@
 'use strict';
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const MEDIOS={efectivo:'Efectivo',transferencia:'Transferencia',tarjeta:'Tarjeta',billetera:'Billetera virtual'};
+const MEDIOS={efectivo:'Efectivo',transferencia:'Transferencia'};
+const MLABEL=Object.assign({tarjeta:'Tarjeta',billetera:'Billetera virtual'},MEDIOS);
+const ENVIOS=['Cadete','Otro'];
+const medioOpts=cur=>Object.entries(MEDIOS).concat(cur&&!(cur in MEDIOS)&&MLABEL[cur]?[[cur,MLABEL[cur]]]:[]);
+const cuentaOpts=cur=>[['efectivo','Efectivo'],['banco','Transferencia']].concat(cur==='billetera'?[['billetera','Billetera virtual']]:[]);
 const CUENTA_DE={efectivo:'efectivo',transferencia:'banco',tarjeta:'banco',billetera:'billetera'};
 const CUENTAS={efectivo:'Efectivo',banco:'Banco',billetera:'Billetera virtual'};
 const ESTADOS={pendiente:'Pendiente',cobrada:'Cobrada',cancelada:'Cancelada',devuelta:'Devuelta'};
@@ -156,6 +160,9 @@ function saldos(d){const s={efectivo:0,banco:0,billetera:0};const ini=(d.config&
   d.ventas.forEach(o=>{if(!valida(o))return;(o.cobros||[]).forEach(c=>{s[CUENTA_DE[c.medio]||'efectivo']+=c.monto})});
   d.gastos.forEach(g=>{if(s[g.cuenta]!=null)s[g.cuenta]-=g.monto});
   d.transf.forEach(t=>{if(s[t.desde]!=null)s[t.desde]-=t.monto;if(s[t.hasta]!=null)s[t.hasta]+=t.monto});return s}
+function ctasVis(d){const s=saldos(d),ini=(d.config&&d.config.saldos)||{};
+  const usa=s.billetera!==0||!!ini.billetera||d.ventas.some(o=>(o.cobros||[]).some(c=>c.medio==='billetera'))||d.gastos.some(g=>g.cuenta==='billetera')||d.transf.some(t=>t.desde==='billetera'||t.hasta==='billetera');
+  return Object.keys(CUENTAS).filter(k=>k!=='billetera'||usa)}
 function movs(d){const a=[];
   d.ventas.forEach(o=>{if(!valida(o))return;(o.cobros||[]).forEach(c=>a.push({k:'cobro',ts:c.ts,monto:c.monto,cuenta:CUENTA_DE[c.medio]||'efectivo',medio:c.medio,t:o.producto,cli:o.cliente,ref:o.id}))});
   d.gastos.forEach(g=>a.push({k:g.tipo,ts:g.ts,monto:g.monto,cuenta:g.cuenta,t:g.concepto,ref:g.id}));
@@ -211,12 +218,12 @@ function movRow(x){
   else{ic='up';cl='out';amt='<span class="amt num neg">'+mS(-x.monto)+'</span>';sub=CUENTAS[x.cuenta]+' · '+hora+' · '+(x.k==='retiro'?'Retiro':'Gasto')}
   return '<button class="item" data-a="mov" data-k="'+x.k+'" data-id="'+esc(x.ref)+'"><span class="ava '+cl+'">'+ico(ic,20)+'</span><span class="mid"><div class="t">'+esc(x.t)+'</div><div class="d">'+sub+'</div></span><span class="r">'+amt+'</span></button>'}
 function vInicio(d){
-  const sal=saldos(d),disp=sum(Object.values(sal),x=>x),hoy=stats(d,rng('hoy'));
+  const sal=saldos(d),disp=sum(Object.values(sal),x=>x),hoy=stats(d,rng('hoy')),gMes=stats(d,rng('mes')).gastos;
   const pend=d.ventas.filter(o=>valida(o)&&porCobrarDe(o)>0),pTot=sum(pend,porCobrarDe);
   const mv=movs(d).slice(0,6);
   return '<div class="top"><div><svg class="logo" role="img" aria-label="ARGYR"><use href="#logo"/></svg><h1>Mi actividad</h1><div class="date">'+fDia(Date.now())+'</div></div><button class="icon-btn" data-a="tab" data-v="ajustes" aria-label="Ajustes">'+ico('gear')+'</button></div>'+
   '<section class="hero" aria-label="Dinero disponible"><div><div class="lbl">Dinero disponible</div><div class="big num">'+m(disp)+'</div><div class="sub">Saldo de tus cuentas registradas</div></div>'+
-  '<div class="accts">'+Object.keys(CUENTAS).map(k=>'<div class="acct"><small>'+CUENTAS[k]+'</small><b class="num">'+m(sal[k])+'</b></div>').join('')+'</div></section>'+
+  '<div class="accts"><div class="acct"><small>Efectivo</small><b class="num">'+m(sal.efectivo)+'</b></div><div class="acct"><small>Banco</small><b class="num">'+m(sal.banco)+'</b></div><button class="acct" data-a="ir-gastos" aria-label="Ver gastos"><small>Gastos del mes</small><b class="num">'+m(gMes)+'</b></button></div></section>'+
   '<div class="row2"><button class="card tap" data-a="goventas" data-per="hoy"><div class="k">Ventas de hoy</div><div class="v num">'+m(hoy.vendido)+'</div><div class="s">'+plural(hoy.ops,'operación','operaciones')+'</div></button>'+
   '<button class="card tap" data-a="goventas" data-per="todo" data-estado="pendiente"><div class="k">Por cobrar</div><div class="v num">'+m(pTot)+'</div><div class="s">'+plural(pend.length,'operación','operaciones')+'</div></button></div>'+
   '<button class="card tap" style="margin-top:12px;display:flex;align-items:center;gap:14px" data-a="nueva"><span class="ava" style="width:46px;height:46px">'+ico('plus',24)+'</span><span><b style="font-family:var(--f-display);font-size:17px">Registrar venta</b><br><span class="s">Anotá una operación nueva</span></span></button>'+
@@ -231,7 +238,7 @@ function ventaRow(o){
   const par=o.estado==='pendiente'&&cobrado(o)>0;
   const tag=par?'<span class="tag parcial">Parcial</span>':'<span class="tag '+o.estado+'">'+ESTADOS[o.estado]+'</span>';
   const dead=!valida(o)?' style="text-decoration:line-through;opacity:.6"':'';
-  return '<button class="item" data-a="venta" data-id="'+esc(o.id)+'"><span class="ava">'+esc((o.producto||'?').charAt(0).toUpperCase())+'</span><span class="mid"><div class="t">'+esc(o.producto)+'</div><div class="d">'+esc(o.cliente||'Mostrador')+' · '+(itemsOf(o).length>1?itemsOf(o).length+' productos · ':'')+qty(unidades(o))+' u. · '+MEDIOS[o.medio]+' · '+when(o.ts)+'</div></span>'+
+  return '<button class="item" data-a="venta" data-id="'+esc(o.id)+'"><span class="ava">'+esc((o.producto||'?').charAt(0).toUpperCase())+'</span><span class="mid"><div class="t">'+esc(o.producto)+'</div><div class="d">'+esc(o.cliente||'Mostrador')+' · '+(itemsOf(o).length>1?itemsOf(o).length+' productos · ':'')+qty(unidades(o))+' u. · '+MLABEL[o.medio]+(o.envio?' · '+esc(o.envio):'')+' · '+when(o.ts)+'</div></span>'+
   '<span class="r"><span class="amt num"'+dead+'>'+m(o.total)+'</span>'+tag+'</span></button>'}
 function listaVentas(d){
   const base=ventasBase(d),f=S.f,L=f.estado==='todas'?base:base.filter(o=>o.estado===f.estado);
@@ -256,7 +263,7 @@ function vVentas(d){
   '<div class="seg" role="group" aria-label="Indicador">'+[['vendido','Vendido'],['cobrado','Cobrado'],['porcobrar','Por cobrar']].map(x=>'<button data-a="vmetric" data-v="'+x[0]+'" aria-pressed="'+(S.vmetric===x[0])+'">'+x[1]+'</button>').join('')+'</div></section>'+
   '<div class="chips" role="group" aria-label="Estado">'+['todas','cobrada','pendiente','cancelada','devuelta'].map(e=>'<button class="chip" data-a="estado" data-v="'+e+'" aria-pressed="'+(f.estado===e)+'">'+(e==='todas'?'Todas':ESTADOS[e])+' <i>'+cnt(e)+'</i></button>').join('')+'</div>'+
   '<div class="search"><input class="inp" id="q" data-in="q" type="search" placeholder="Buscar por producto o cliente" value="'+esc(f.q)+'" autocomplete="off"><button class="icon-btn" data-a="filtros" aria-label="Filtros" aria-expanded="'+f.open+'" style="'+(nF?'color:var(--accent)':'')+'">'+ico('flt',20)+'</button></div>'+
-  (f.open?'<div class="card" style="margin-top:10px"><div class="form"><div class="two"><div class="field"><label for="fmedio">Medio de pago</label>'+sel('fmedio',Object.entries(MEDIOS),f.medio,'Todos')+'</div>'+
+  (f.open?'<div class="card" style="margin-top:10px"><div class="form"><div class="two"><div class="field"><label for="fmedio">Medio de pago</label>'+sel('fmedio',Object.entries(MLABEL).filter(([k])=>k in MEDIOS||d.ventas.some(o=>o.medio===k)),f.medio,'Todos')+'</div>'+
     '<div class="field"><label for="fcat">Categoría</label>'+sel('fcat',cats.map(c=>[c,c]),f.cat,'Todas')+'</div></div>'+
     '<div class="two"><div class="field"><label for="fdesde">Desde</label><input class="inp" type="date" id="fdesde" data-in="fdesde" value="'+esc(f.desde)+'"></div><div class="field"><label for="fhasta">Hasta</label><input class="inp" type="date" id="fhasta" data-in="fhasta" value="'+esc(f.hasta)+'"></div></div>'+
     '<div class="btns"><button class="btn ghost" data-a="exp-ventas-f">Exportar estas ventas (CSV)</button><button class="btn sec2" data-a="limpiar">Limpiar filtros</button></div></div></div>':'')+
@@ -264,7 +271,7 @@ function vVentas(d){
 function vDinero(d){
   const sal=saldos(d),pend=d.ventas.filter(o=>valida(o)&&porCobrarDe(o)>0);
   const all=movs(d),fl=S.dfilt,L=all.filter(x=>fl==='todos'||(fl==='ingresos'&&x.k==='cobro')||(fl==='gastos'&&(x.k==='gasto'||x.k==='retiro'))||(fl==='transf'&&x.k==='transf'));
-  let h='<div class="top"><h1>Dinero</h1></div><div class="list">'+Object.keys(CUENTAS).map(k=>'<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div><div class="k">'+CUENTAS[k]+'</div><div class="v num" style="margin:2px 0 0">'+m(sal[k])+'</div></div><span class="ava mv">'+ico(k==='efectivo'?'wal':'rec',20)+'</span></div>').join('')+'</div>'+
+  let h='<div class="top"><h1>Dinero</h1></div><div class="list cards3">'+ctasVis(d).map(k=>'<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div><div class="k">'+CUENTAS[k]+'</div><div class="v num" style="margin:2px 0 0">'+m(sal[k])+'</div></div><span class="ava mv">'+ico(k==='efectivo'?'wal':'rec',20)+'</span></div>').join('')+'</div>'+
   '<button class="card tap" style="margin-top:12px" data-a="goventas" data-per="todo" data-estado="pendiente"><div class="k">Pendiente de cobro</div><div class="v num">'+m(sum(pend,porCobrarDe))+'</div><div class="s">'+plural(pend.length,'operación','operaciones')+' · no está en tus saldos hasta que lo cobres</div></button>'+
   '<div class="btns" style="margin-top:12px"><button class="btn ghost" data-a="gasto" data-v="gasto">Gasto</button><button class="btn ghost" data-a="gasto" data-v="retiro">Retiro personal</button><button class="btn ghost" data-a="transf">Pasar entre cuentas</button></div>'+
   '<div class="sec"><h2>Movimientos</h2><button data-a="saldos">Saldos iniciales</button></div>'+
@@ -318,7 +325,7 @@ function vStats(d){
   const r=rng(S.sp),pr=rng(S.sp,true),s=stats(d,r),p=stats(d,pr),lab={hoy:'vs ayer',semana:'vs semana anterior',mes:'vs mes anterior'}[S.sp];
   const disp=sum(Object.values(saldos(d)),x=>x);
   const med={};d.ventas.forEach(o=>{if(!valida(o))return;(o.cobros||[]).forEach(c=>{if(c.ts>=r[0]&&c.ts<r[1])med[c.medio]=(med[c.medio]||0)+c.monto})});
-  const mrows=Object.keys(MEDIOS).filter(k=>med[k]).map(k=>({n:MEDIOS[k],total:med[k]})).sort((a,b)=>b.total-a.total);
+  const mrows=Object.keys(MLABEL).filter(k=>med[k]).map(k=>({n:MLABEL[k],total:med[k]})).sort((a,b)=>b.total-a.total);
   const prods=groupBy(s.vs,'producto').slice(0,5),cats=groupBy(s.vs,'categoria').slice(0,5);
   const bk=buckets(d),sel=S.sel<0?bk.length-1:S.sel,tot=sum(bk,b=>b.v);
   const ev={ventas:'Ventas',gastos:'Gastos',ganancia:'Ganancia estimada'}[S.evo];
@@ -406,9 +413,9 @@ function shDetalle(sh){
   const kv=(k,v)=>v?'<dt>'+k+'</dt><dd>'+v+'</dd>':'';
   let h=head(esc(o.producto))+'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div class="num" style="font-size:32px;font-weight:800">'+m(o.total)+'</div>'+tag+'</div>';
   if(o.demo)h+='<div class="banner"><span>Esto es un ejemplo. Registrá tu primera venta con el botón +.</span></div>';
-  h+='<div class="card"><dl class="kv" style="margin:0">'+kv('Cliente',esc(o.cliente||'Mostrador'))+kv('Fecha',fDia(o.ts)+' · '+fHora(o.ts))+kv('Medio de pago',MEDIOS[o.medio])+kv('Cobrado',m(cob))+(pc?kv('Por cobrar','<b class="neg">'+m(pc)+'</b>'):'')+kv('Notas',esc(o.notas))+'</dl></div>';
+  h+='<div class="card"><dl class="kv" style="margin:0">'+kv('Cliente',esc(o.cliente||'Mostrador'))+kv('Fecha',fDia(o.ts)+' · '+fHora(o.ts))+kv('Medio de pago',MLABEL[o.medio])+kv('Envío',esc(o.envio))+kv('Cobrado',m(cob))+(pc?kv('Por cobrar','<b class="neg">'+m(pc)+'</b>'):'')+kv('Notas',esc(o.notas))+'</dl></div>';
   h+='<div class="sec" style="margin-top:16px"><h2 style="font-size:16px">Productos ('+its.length+')</h2></div><div class="card"><ul class="hist its">'+its.map(it=>'<li class="itl"><span class="mid"><b>'+esc(itName(it))+'</b><small>'+qty(it.cantidad)+' × '+m(it.precio)+(it.categoria?' · '+esc(it.categoria):'')+(it.costo?' · costo '+m(it.costo):'')+'</small></span><b class="num">'+m(itTotal(it))+'</b></li>').join('')+'</ul></div>';
-  if((o.cobros||[]).length&&valida(o))h+='<div class="sec" style="margin-top:16px"><h2 style="font-size:16px">Cobros</h2></div><div class="card"><ul class="hist">'+o.cobros.map(c=>'<li><b class="pos num">'+m(c.monto)+'</b> · '+MEDIOS[c.medio]+' · '+fFull(c.ts)+'</li>').join('')+'</ul></div>';
+  if((o.cobros||[]).length&&valida(o))h+='<div class="sec" style="margin-top:16px"><h2 style="font-size:16px">Cobros</h2></div><div class="card"><ul class="hist">'+o.cobros.map(c=>'<li><b class="pos num">'+m(c.monto)+'</b> · '+MLABEL[c.medio]+' · '+fFull(c.ts)+'</li>').join('')+'</ul></div>';
   if(!valida(o)&&(o.cobros||[]).length)h+='<p class="hint" style="margin-top:10px">Los cobros de esta venta no suman a tus saldos porque está '+ESTADOS[o.estado].toLowerCase()+'.</p>';
   if((o.hist||[]).length)h+='<div class="sec" style="margin-top:16px"><h2 style="font-size:16px">Historial</h2></div><div class="card"><ul class="hist">'+o.hist.slice().reverse().map(x=>'<li><b style="color:var(--ink)">'+fFull(x.ts)+'</b> · '+esc(x.m)+'</li>').join('')+'</ul></div>';
   if(o.demo)return h;
@@ -435,14 +442,15 @@ function shVenta(sh){
   const uniqI=k=>[...new Set(V.flatMap(o=>itemsOf(o).map(i=>(i[k]||'').trim())).filter(Boolean))];
   const uniqC=[...new Set(V.map(o=>(o.cliente||'').trim()).filter(Boolean))];
   const last=V.slice().sort((a,b)=>b.ts-a.ts)[0];
-  const o=old||{ts:Date.now(),cliente:'',medio:last?last.medio:'efectivo',estado:'cobrada',notas:''};
+  const o=old||{ts:Date.now(),cliente:'',medio:last&&(last.medio in MEDIOS)?last.medio:'efectivo',envio:'',estado:'cobrada',notas:''};
   const dl=(id,a)=>'<datalist id="'+id+'">'+a.map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist>';
   const estados=old?Object.entries(ESTADOS):[['cobrada','Cobrada'],['pendiente','Pendiente']];
   return head(old?'Editar venta':'Nueva venta')+'<div class="form">'+
   '<div id="items" class="form">'+itemsHtml(sh.items)+'</div>'+
   '<button type="button" class="btn ghost" data-a="add-item">+ Agregar otro producto</button>'+
   '<div class="field"><label for="v-cli">Cliente</label><input class="inp" id="v-cli" list="dl-cli" autocomplete="off" placeholder="Nombre (vacío = Mostrador)" value="'+esc(o.cliente)+'"></div>'+
-  '<div class="field"><span class="lab">Medio de pago</span>'+chipsOf('medio',Object.entries(MEDIOS),o.medio)+'</div>'+
+  '<div class="field"><span class="lab">Envío (opcional)</span><div class="opts" role="group" data-grp="envio">'+ENVIOS.map(v=>'<button type="button" class="chip" data-a="tog" data-v="'+v+'" aria-pressed="'+(o.envio===v)+'">'+v+'</button>').join('')+'</div></div>'+
+  '<div class="field"><span class="lab">Medio de pago</span>'+chipsOf('medio',medioOpts(o.medio),o.medio)+'</div>'+
   '<div class="field"><span class="lab">Estado</span>'+chipsOf('estado',estados,o.estado)+'</div>'+
   '<div class="field"><label for="v-ts">Fecha y hora</label><input class="inp" type="datetime-local" id="v-ts" value="'+toInput(o.ts)+'"></div>'+
   '<div class="field"><label for="v-notas">Notas (opcional)</label><textarea class="inp" id="v-notas" rows="2" placeholder="Talle, color, entrega…">'+esc(o.notas)+'</textarea></div>'+
@@ -463,7 +471,7 @@ async function doSaveVenta(){
   let ts=new Date(val('v-ts')).getTime();if(!isFinite(ts))ts=Date.now();
   const medio=grpVal('medio')||'efectivo',estado=grpVal('estado')||'cobrada';
   const total=sum(its,itTotal),resumen=itName(its[0])+(its.length>1?' + '+(its.length-1)+' más':'');
-  const o=Object.assign({},old||{id:newId(),cobros:[],hist:[]},{ts,cliente:val('v-cli').trim(),items:its,producto:resumen,categoria:its[0].categoria,cantidad:sum(its,i=>i.cantidad),precio:its.length===1?its[0].precio:0,costo:its.length===1?its[0].costo:0,total,medio,estado,notas:val('v-notas').trim()});
+  const o=Object.assign({},old||{id:newId(),cobros:[],hist:[]},{ts,cliente:val('v-cli').trim(),items:its,producto:resumen,categoria:its[0].categoria,cantidad:sum(its,i=>i.cantidad),precio:its.length===1?its[0].precio:0,costo:its.length===1?its[0].costo:0,total,medio,estado,envio:grpVal('envio'),notas:val('v-notas').trim()});
   const oc=(old&&old.cobros)||[];
   if(estado==='cobrada'){if(old&&old.estado==='cobrada'&&oc.length===1)o.cobros=[{monto:total,medio,ts:oc[0].ts}];else if(old&&old.estado==='pendiente'){const r=total-sum(oc,c=>c.monto);o.cobros=r>0?oc.concat([{monto:r,medio,ts:Date.now()}]):oc}else o.cobros=[{monto:total,medio,ts:Math.min(ts,Date.now())}]}
   else if(estado==='pendiente'){o.cobros=(old&&(old.estado==='pendiente'||old.estado==='cancelada'))?oc:[];if(sum(o.cobros,c=>c.monto)>=total&&o.cobros.length)o.estado='cobrada'}
@@ -471,7 +479,7 @@ async function doSaveVenta(){
   let msg='Venta creada';
   if(old){const ch=[],key=a=>JSON.stringify(a.map(i=>[i.producto,i.variante||'',i.cantidad,i.precio]));
     if(old.total!==o.total)ch.push('total '+m(old.total)+' → '+m(o.total));if(old.estado!==o.estado)ch.push('estado '+ESTADOS[old.estado]+' → '+ESTADOS[o.estado]);
-    if(key(itemsOf(old))!==key(its))ch.push('productos');if((old.cliente||'')!==o.cliente)ch.push('cliente');if(old.medio!==o.medio)ch.push('medio de pago');if(old.ts!==o.ts)ch.push('fecha');
+    if(key(itemsOf(old))!==key(its))ch.push('productos');if((old.cliente||'')!==o.cliente)ch.push('cliente');if(old.medio!==o.medio)ch.push('medio de pago');if((old.envio||'')!==o.envio)ch.push('envío');if(old.ts!==o.ts)ch.push('fecha');
     msg='Editada'+(ch.length?': '+ch.join(', '):'')}
   try{await saveV(o,msg);if(old&&(old.total!==o.total||old.estado!==o.estado))await log('Venta "'+o.producto+'" '+msg.toLowerCase());
     closeSheet();toast(old?'Cambios guardados':'Venta guardada');
@@ -479,7 +487,7 @@ async function doSaveVenta(){
 function shCobro(sh){const o=findV(sh.id);if(!o)return null;const pc=porCobrarDe(o);
   return head('Registrar cobro')+'<p class="hint" style="margin:-6px 0 14px">'+esc(o.producto)+' · '+esc(o.cliente||'Mostrador')+'. Falta cobrar <b class="num">'+m(pc)+'</b>.</p><div class="form">'+
   '<div class="field"><label for="c-monto">Monto recibido ($)</label><input class="inp" id="c-monto" inputmode="decimal" value="'+inputNum(pc)+'"></div>'+
-  '<div class="field"><span class="lab">Medio de pago</span>'+chipsOf('medio',Object.entries(MEDIOS),o.medio)+'</div>'+
+  '<div class="field"><span class="lab">Medio de pago</span>'+chipsOf('medio',medioOpts(o.medio),o.medio)+'</div>'+
   '<div class="err" id="c-err" role="alert"></div><button class="btn" data-a="save-cobro">Registrar cobro</button></div>'}
 async function doSaveCobro(){
   const id=S.sheet.id,o=cloneV(findV(id)),err=t=>{$('#c-err').textContent=t},pc=porCobrarDe(o),monto=toC(parseAR(val('c-monto')));
@@ -487,14 +495,14 @@ async function doSaveCobro(){
   if(monto>pc)return err('Es más de lo que falta cobrar ('+m(pc)+').');
   const medio=grpVal('medio')||o.medio;o.cobros=(o.cobros||[]).concat([{monto,medio,ts:Date.now()}]);
   if(cobrado(o)>=o.total)o.estado='cobrada';
-  try{await saveV(o,'Cobro de '+m(monto)+' ('+MEDIOS[medio]+')');closeSheet();toast('Cobro registrado')}catch(e){err('No se pudo guardar. Probá de nuevo.')}}
+  try{await saveV(o,'Cobro de '+m(monto)+' ('+MLABEL[medio]+')');closeSheet();toast('Cobro registrado')}catch(e){err('No se pudo guardar. Probá de nuevo.')}}
 function shGasto(sh){
   const g=sh.id?D().gastos.find(x=>x.id===sh.id):null,tipo=g?g.tipo:sh.tipo,rt=tipo==='retiro';
   const o=g||{ts:Date.now(),concepto:rt?'Retiro personal':'',monto:0,cuenta:'efectivo',notas:''};
   return head(g?'Editar '+(rt?'retiro':'gasto'):(rt?'Retiro personal':'Nuevo gasto'))+'<div class="form">'+
   '<div class="field"><label for="g-con">Concepto</label><input class="inp" id="g-con" autocomplete="off" placeholder="'+(rt?'Ej: Retiro personal':'Ej: Flete, bolsas, alquiler')+'" value="'+esc(o.concepto)+'"></div>'+
   '<div class="field"><label for="g-monto">Monto ($)</label><input class="inp" id="g-monto" inputmode="decimal" value="'+inputNum(o.monto)+'"></div>'+
-  '<div class="field"><span class="lab">Salió de</span>'+chipsOf('cuenta',Object.entries(CUENTAS),o.cuenta)+'</div>'+
+  '<div class="field"><span class="lab">Salió de</span>'+chipsOf('cuenta',cuentaOpts(o.cuenta),o.cuenta)+'</div>'+
   '<div class="field"><label for="g-ts">Fecha y hora</label><input class="inp" type="datetime-local" id="g-ts" value="'+toInput(o.ts)+'"></div>'+
   '<div class="field"><label for="g-notas">Notas (opcional)</label><input class="inp" id="g-notas" value="'+esc(o.notas)+'"></div>'+
   '<div class="err" id="g-err" role="alert"></div><button class="btn" data-a="save-gasto">Guardar</button>'+(g?'<button class="btn ghost" data-a="del-gasto">Eliminar</button>':'')+'</div>'}
@@ -509,8 +517,8 @@ async function doSaveGasto(){
 function shTransf(sh){
   const t=sh.id?D().transf.find(x=>x.id===sh.id):null,o=t||{ts:Date.now(),desde:'efectivo',hasta:'banco',monto:0,notas:''};
   return head(t?'Editar pasaje':'Pasar entre cuentas')+'<div class="form">'+
-  '<div class="field"><span class="lab">De</span>'+chipsOf('desde',Object.entries(CUENTAS),o.desde)+'</div>'+
-  '<div class="field"><span class="lab">A</span>'+chipsOf('hasta',Object.entries(CUENTAS),o.hasta)+'</div>'+
+  '<div class="field"><span class="lab">De</span>'+chipsOf('desde',Object.entries(CUENTAS).filter(([k])=>ctasVis(D()).includes(k)||k===o.desde),o.desde)+'</div>'+
+  '<div class="field"><span class="lab">A</span>'+chipsOf('hasta',Object.entries(CUENTAS).filter(([k])=>ctasVis(D()).includes(k)||k===o.hasta),o.hasta)+'</div>'+
   '<div class="field"><label for="t-monto">Monto ($)</label><input class="inp" id="t-monto" inputmode="decimal" value="'+inputNum(o.monto)+'"></div>'+
   '<div class="field"><label for="t-ts">Fecha y hora</label><input class="inp" type="datetime-local" id="t-ts" value="'+toInput(o.ts)+'"></div>'+
   '<div class="err" id="t-err" role="alert"></div><button class="btn" data-a="save-transf">Guardar</button>'+(t?'<button class="btn ghost" data-a="del-transf">Eliminar</button>':'')+'</div>'}
@@ -522,7 +530,7 @@ async function doSaveTransf(){
   try{await put('transf',old?old.id:newId(),{ts,desde,hasta,monto,notas:''});closeSheet();toast('Guardado')}catch(e){err('No se pudo guardar. Probá de nuevo.')}}
 function shSaldos(){const s=(D().config.saldos)||{};
   return head('Saldos iniciales')+'<p class="hint" style="margin:-6px 0 14px">Cargá lo que tenías en cada cuenta antes de empezar a usar ARGYR. Las ventas cobradas y los gastos se suman y restan desde ahí.</p><div class="form">'+
-  Object.keys(CUENTAS).map(k=>'<div class="field"><label for="s-'+k+'">'+CUENTAS[k]+' ($)</label><input class="inp" id="s-'+k+'" inputmode="decimal" value="'+inputNum(s[k])+'"></div>').join('')+
+  ctasVis(D()).map(k=>'<div class="field"><label for="s-'+k+'">'+CUENTAS[k]+' ($)</label><input class="inp" id="s-'+k+'" inputmode="decimal" value="'+inputNum(s[k])+'"></div>').join('')+
   '<div class="err" id="s-err" role="alert"></div><button class="btn" data-a="save-saldos">Guardar saldos</button></div>'}
 async function doSaveSaldos(){
   const saldos={};for(const k in CUENTAS){const v=val('s-'+k).trim();const n=v?parseAR(v):0;if(isNaN(n)){$('#s-err').textContent='Revisá el monto de '+CUENTAS[k]+'.';return}saldos[k]=toC(n)}
@@ -569,8 +577,8 @@ async function saveFile(filename,data){
     a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);toast('Archivo listo')}
   catch(e){toast('No se pudo guardar el archivo.')}}
 const stamp=()=>toDateInput(Date.now());
-function ventasCsv(list){const rows=[['N° venta','Fecha','Hora','Cliente','Producto','Variante','Categoría','Cantidad','Precio unitario','Subtotal','Total venta','Cobrado','Por cobrar','Medio de pago','Estado','Costo unitario','Notas']];
-  list.slice().sort((a,b)=>a.ts-b.ts).forEach((o,k)=>itemsOf(o).forEach((it,j)=>rows.push([k+1,fDate(o.ts),fHora(o.ts),o.cliente||'Mostrador',it.producto,it.variante||'',it.categoria||'',String(it.cantidad).replace('.',','),csvNum(it.precio),csvNum(itTotal(it)),j===0?csvNum(o.total):'',j===0?csvNum(cobrado(o)):'',j===0?csvNum(porCobrarDe(o)):'',MEDIOS[o.medio],ESTADOS[o.estado],it.costo?csvNum(it.costo):'',j===0?(o.notas||''):''])));
+function ventasCsv(list){const rows=[['N° venta','Fecha','Hora','Cliente','Producto','Variante','Categoría','Cantidad','Precio unitario','Subtotal','Total venta','Cobrado','Por cobrar','Medio de pago','Envío','Estado','Costo unitario','Notas']];
+  list.slice().sort((a,b)=>a.ts-b.ts).forEach((o,k)=>itemsOf(o).forEach((it,j)=>rows.push([k+1,fDate(o.ts),fHora(o.ts),o.cliente||'Mostrador',it.producto,it.variante||'',it.categoria||'',String(it.cantidad).replace('.',','),csvNum(it.precio),csvNum(itTotal(it)),j===0?csvNum(o.total):'',j===0?csvNum(cobrado(o)):'',j===0?csvNum(porCobrarDe(o)):'',MLABEL[o.medio],o.envio||'',ESTADOS[o.estado],it.costo?csvNum(it.costo):'',j===0?(o.notas||''):''])));
   return csv(rows)}
 function realData(){return S.ventas.length||S.gastos.length||S.transf.length||Object.keys(S.config).length}
 async function pool(items,fn,n){let i=0;await Promise.all(Array.from({length:n},async()=>{while(i<items.length){await fn(items[i++])}}))}
@@ -619,6 +627,8 @@ document.addEventListener('click',async ev=>{
   case 'pick':{const grp=el.closest('[data-grp]');grp.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b===el?'true':'false'));break}
   case 'step':{const i=el.closest('.itm').querySelector('.i-cant'),n=parseAR(i.value)||0;i.value=qty(Math.max(1,Math.round((n+ +el.dataset.d)*1000)/1000));calcTotal();break}
   case 'add-item':{S.sheet.items=readItems();S.sheet.items.push(blankItem());drawItems();const rows=document.querySelectorAll('#items .itm'),last=rows[rows.length-1];if(last){last.scrollIntoView({block:'nearest'});const f=last.querySelector('.i-prod');if(f)f.focus({preventScroll:true})}break}
+  case 'tog':{const was=el.getAttribute('aria-pressed')==='true';el.closest('[data-grp]').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed','false'));if(!was)el.setAttribute('aria-pressed','true');break}
+  case 'ir-gastos':S.tab='dinero';S.dfilt='gastos';window.scrollTo(0,0);render();break;
   case 'var':{const row=el.closest('.itm'),was=el.getAttribute('aria-pressed')==='true',pr=row.querySelector('.i-precio');
     el.closest('.vars').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed','false'));if(!was)el.setAttribute('aria-pressed','true');
     if(pr.dataset.auto==='1'){pr.value='';delete pr.dataset.auto}fillRow(row);calcTotal();break}

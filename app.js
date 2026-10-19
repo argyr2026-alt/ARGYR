@@ -2,12 +2,14 @@
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const MEDIOS={efectivo:'Efectivo',transferencia:'Transferencia'};
-const MLABEL=Object.assign({tarjeta:'Tarjeta',billetera:'Billetera virtual'},MEDIOS);
+const MLABEL=Object.assign({tarjeta:'Transferencia',billetera:'Transferencia'},MEDIOS);
+const medN=k=>(k==='tarjeta'||k==='billetera')?'transferencia':k;
+const ctaN=k=>k==='billetera'?'banco':k;
 const ENVIOS=['Retiro','Cadete','Otro'];
 const medioOpts=cur=>Object.entries(MEDIOS).concat(cur&&!(cur in MEDIOS)&&MLABEL[cur]?[[cur,MLABEL[cur]]]:[]);
-const cuentaOpts=cur=>[['efectivo','Efectivo'],['banco','Transferencia']].concat(cur==='billetera'?[['billetera','Billetera virtual']]:[]);
-const CUENTA_DE={efectivo:'efectivo',transferencia:'banco',tarjeta:'banco',billetera:'billetera'};
-const CUENTAS={efectivo:'Efectivo',banco:'Banco',billetera:'Billetera virtual'};
+const cuentaOpts=cur=>[['efectivo','Efectivo'],['banco','Transferencia']];
+const CUENTA_DE={efectivo:'efectivo',transferencia:'banco',tarjeta:'banco',billetera:'banco'};
+const CUENTAS={efectivo:'Efectivo',banco:'Transferencia',billetera:'Transferencia'};
 const ESTADOS={pendiente:'Pendiente',cobrada:'Cobrada',cancelada:'Cancelada',devuelta:'Devuelta'};
 const DAY=86400000;
 /* ---------- dinero: todo en centavos enteros ---------- */
@@ -133,17 +135,17 @@ function makeDemo(){
   mk(0,10,42,'Lucía Fernández','Buzo canguro','Abrigo',1,24500,12000,'efectivo','cobrada');
   mk(0,11,15,'Carla Ruiz','Campera rompeviento','Abrigo',1,48000,26000,'transferencia','pendiente',20000);
   mk(0,12,5,'Mostrador','Gorra','Accesorios',2,7500,3000,'efectivo','cobrada');
-  mk(1,17,20,'Tomás Herrera','Mochila urbana','Accesorios',1,32000,17000,'billetera','cobrada');
+  mk(1,17,20,'Tomás Herrera','Mochila urbana','Accesorios',1,32000,17000,'transferencia','cobrada');
   mk(1,11,0,'Lucía Fernández','Medias pack x3','Accesorios',4,4200,1800,'efectivo','cobrada');
   mk(1,15,40,'Paula Sosa','Remera estampada','Remeras',2,6000,2500,'transferencia','pendiente');
   mk(2,10,10,'Mostrador','Gorra','Accesorios',1,7500,3000,'efectivo','cobrada');
   mk(3,18,30,'Martín Gómez','Buzo canguro','Abrigo',2,24500,12000,'transferencia','cobrada');
-  mk(4,13,0,'Carla Ruiz','Mochila urbana','Accesorios',1,32000,17000,'tarjeta','devuelta');
+  mk(4,13,0,'Carla Ruiz','Mochila urbana','Accesorios',1,32000,17000,'transferencia','devuelta');
   mk(5,16,45,'Tomás Herrera','Remera estampada','Remeras',5,6000,2500,'efectivo','cobrada');
-  mk(6,12,30,'Mostrador','Medias pack x3','Accesorios',3,4200,1800,'billetera','cobrada');
+  mk(6,12,30,'Mostrador','Medias pack x3','Accesorios',3,4200,1800,'transferencia','cobrada');
   mk(8,10,0,'Paula Sosa','Campera rompeviento','Abrigo',1,48000,26000,'transferencia','cobrada');
   mk(9,19,0,'Lucía Fernández','Gorra','Accesorios',1,7500,3000,'efectivo','cancelada');
-  mk(12,11,30,'Mostrador','Buzo canguro','Abrigo',2,24500,12000,'tarjeta','cobrada');
+  mk(12,11,30,'Mostrador','Buzo canguro','Abrigo',2,24500,12000,'transferencia','cobrada');
   mk(35,15,0,'Tomás Herrera','Mochila urbana','Accesorios',2,32000,17000,'transferencia','cobrada');
   mk(38,12,0,'Mostrador','Remera estampada','Remeras',6,6000,2500,'efectivo','cobrada');
   const G=[],T=[];
@@ -151,22 +153,20 @@ function makeDemo(){
   g(0,8,'gasto','Bolsas y etiquetas',6500,'efectivo');g(1,9,'gasto','Flete de mercadería',18000,'banco');
   g(3,20,'haberes','Sueldo de Juan (cocina)',25000,'efectivo');g(10,10,'gasto','Alquiler del puesto',40000,'banco');
   T.push({id:'demot1',demo:true,ts:D0(addD(now,-2))+14*3600000,desde:'efectivo',hasta:'banco',monto:toC(30000),notas:''});
-  return {ventas:V,gastos:G,transf:T,config:{saldos:{efectivo:toC(150000),banco:toC(80000),billetera:toC(10000)}}}}
+  return {ventas:V,gastos:G,transf:T,config:{saldos:{efectivo:toC(150000),banco:toC(90000)}}}}
 let _demo=null;
 function demoOn(){return S.ready&&!S.demoHidden&&!S.ventas.length&&!S.gastos.length&&!S.transf.length&&!Object.keys(S.config).length}
 function D(){if(demoOn()){if(!_demo||_demo.day!==D0(Date.now())){_demo=makeDemo();_demo.day=D0(Date.now())}return Object.assign({demo:true},_demo)}
   return {demo:false,ventas:S.ventas,gastos:S.gastos,transf:S.transf,config:S.config}}
-function saldos(d){const s={efectivo:0,banco:0,billetera:0};const ini=(d.config&&d.config.saldos)||{};for(const k in s)s[k]=ini[k]||0;
+function saldos(d){const s={efectivo:0,banco:0};const ini=(d.config&&d.config.saldos)||{};for(const k in ini)if(ini[k]&&s[ctaN(k)]!=null)s[ctaN(k)]+=ini[k];
   d.ventas.forEach(o=>{if(!valida(o))return;(o.cobros||[]).forEach(c=>{s[CUENTA_DE[c.medio]||'efectivo']+=c.monto})});
-  d.gastos.forEach(g=>{if(s[g.cuenta]!=null)s[g.cuenta]-=g.monto});
-  d.transf.forEach(t=>{if(s[t.desde]!=null)s[t.desde]-=t.monto;if(s[t.hasta]!=null)s[t.hasta]+=t.monto});return s}
-function ctasVis(d){const s=saldos(d),ini=(d.config&&d.config.saldos)||{};
-  const usa=s.billetera!==0||!!ini.billetera||d.ventas.some(o=>(o.cobros||[]).some(c=>c.medio==='billetera'))||d.gastos.some(g=>g.cuenta==='billetera')||d.transf.some(t=>t.desde==='billetera'||t.hasta==='billetera');
-  return Object.keys(CUENTAS).filter(k=>k!=='billetera'||usa)}
+  d.gastos.forEach(g=>{const k=ctaN(g.cuenta);if(s[k]!=null)s[k]-=g.monto});
+  d.transf.forEach(t=>{const a=ctaN(t.desde),b=ctaN(t.hasta);if(a===b)return;if(s[a]!=null)s[a]-=t.monto;if(s[b]!=null)s[b]+=t.monto});return s}
+function ctasVis(d){return ['efectivo','banco']}
 function movs(d){const a=[];
   d.ventas.forEach(o=>{if(!valida(o))return;(o.cobros||[]).forEach(c=>a.push({k:'cobro',ts:c.ts,monto:c.monto,cuenta:CUENTA_DE[c.medio]||'efectivo',medio:c.medio,t:o.producto,cli:o.cliente,ref:o.id}))});
-  d.gastos.forEach(g=>a.push({k:g.tipo,ts:g.ts,monto:g.monto,cuenta:g.cuenta,t:g.concepto,ref:g.id}));
-  d.transf.forEach(t=>a.push({k:'transf',ts:t.ts,monto:t.monto,desde:t.desde,hasta:t.hasta,t:CUENTAS[t.desde]+' → '+CUENTAS[t.hasta],ref:t.id}));
+  d.gastos.forEach(g=>a.push({k:g.tipo,ts:g.ts,monto:g.monto,cuenta:ctaN(g.cuenta),t:g.concepto,ref:g.id}));
+  d.transf.forEach(t=>a.push({k:'transf',ts:t.ts,monto:t.monto,desde:t.desde,hasta:t.hasta,t:CUENTAS[ctaN(t.desde)]+' → '+CUENTAS[ctaN(t.hasta)],ref:t.id}));
   return a.sort((x,y)=>y.ts-x.ts)}
 function stats(d,r){const inR=t=>t>=r[0]&&t<r[1];
   const vs=d.ventas.filter(o=>valida(o)&&inR(o.ts));
@@ -218,21 +218,19 @@ function movRow(x){
   else{ic='up';cl='out';amt='<span class="amt num neg">'+mS(-x.monto)+'</span>';sub=CUENTAS[x.cuenta]+' · '+hora+' · '+({retiro:'Retiro',haberes:'Haberes'}[x.k]||'Gasto')}
   return '<button class="item" data-a="mov" data-k="'+x.k+'" data-id="'+esc(x.ref)+'"><span class="ava '+cl+'">'+ico(ic,20)+'</span><span class="mid"><div class="t">'+esc(x.t)+'</div><div class="d">'+sub+'</div></span><span class="r">'+amt+'</span></button>'}
 function vInicio(d){
-  const sal=saldos(d),disp=sum(Object.values(sal),x=>x),hoy=stats(d,rng('hoy')),gMes=stats(d,rng('mes')).gastos;
+  const hoy=stats(d,rng('hoy')),gMes=stats(d,rng('mes')).gastos;
   const pend=d.ventas.filter(o=>valida(o)&&porCobrarDe(o)>0),pTot=sum(pend,porCobrarDe);
   const mv=movs(d).slice(0,6);
   return '<div class="top"><div><svg class="logo" role="img" aria-label="ARGYR"><use href="#logo"/></svg><h1>Mi actividad</h1><div class="date">'+fDia(Date.now())+'</div></div><button class="icon-btn" data-a="tab" data-v="ajustes" aria-label="Ajustes">'+ico('gear')+'</button></div>'+
-  '<section class="hero" aria-label="Dinero disponible"><div><div class="lbl">Dinero disponible</div><div class="big num">'+m(disp)+'</div><div class="sub">Saldo de tus cuentas registradas</div></div>'+
-  '<div class="accts"><div class="acct"><small>Efectivo</small><b class="num">'+m(sal.efectivo)+'</b></div><div class="acct"><small>Banco</small><b class="num">'+m(sal.banco)+'</b></div><button class="acct" data-a="ir-gastos" aria-label="Ver gastos"><small>Gastos del mes</small><b class="num">'+m(gMes)+'</b></button></div></section>'+
-  '<div class="row2"><button class="card tap" data-a="goventas" data-per="hoy"><div class="k">Ventas de hoy</div><div class="v num">'+m(hoy.vendido)+'</div><div class="s">'+plural(hoy.ops,'operación','operaciones')+'</div></button>'+
-  '<button class="card tap" data-a="goventas" data-per="todo" data-estado="pendiente"><div class="k">Por cobrar</div><div class="v num">'+m(pTot)+'</div><div class="s">'+plural(pend.length,'operación','operaciones')+'</div></button></div>'+
+  '<section class="hero" aria-label="Ventas de hoy"><div><div class="lbl">Ventas de hoy</div><div class="big num">'+m(hoy.vendido)+'</div><div class="sub">'+plural(hoy.ops,'operación','operaciones')+' válidas hoy</div></div>'+
+  '<div class="accts"><div class="acct"><small>Cobrado hoy</small><b class="num">'+m(hoy.cob)+'</b></div><button class="acct" data-a="goventas" data-per="todo" data-estado="pendiente" aria-label="Ver ventas pendientes de cobro"><small>Por cobrar</small><b class="num">'+m(pTot)+'</b></button><button class="acct" data-a="ir-gastos" aria-label="Ver gastos"><small>Gastos del mes</small><b class="num">'+m(gMes)+'</b></button></div></section>'+
   '<button class="card tap" style="margin-top:12px;display:flex;align-items:center;gap:14px" data-a="nueva"><span class="ava" style="width:46px;height:46px">'+ico('plus',24)+'</span><span><b style="font-family:var(--f-display);font-size:17px">Registrar venta</b><br><span class="s">Anotá una operación nueva</span></span></button>'+
   '<div class="sec"><h2>Últimos movimientos</h2>'+(mv.length?'<button data-a="tab" data-v="dinero">Ver todos</button>':'')+'</div>'+
   (mv.length?'<div class="list">'+mv.map(movRow).join('')+'</div>':'<div class="empty"><b>Todavía no hay movimientos</b>Cuando registres una venta cobrada o un gasto, aparece acá.</div>')}
 function ventasBase(d){const f=S.f;let from=0,to=Infinity;
   if(f.desde||f.hasta){from=f.desde?new Date(f.desde+'T00:00').getTime():0;to=f.hasta?new Date(f.hasta+'T00:00').getTime()+DAY:Infinity}else{const r=rng(f.per);from=r[0];to=r[1]}
   const q=f.q.trim().toLowerCase(),mn=parseAR(f.mmin),mx=parseAR(f.mmax),nc=norm(f.cliente),np=norm(f.producto);
-  return d.ventas.filter(o=>o.ts>=from&&o.ts<to&&(!f.medio||o.medio===f.medio)&&
+  return d.ventas.filter(o=>o.ts>=from&&o.ts<to&&(!f.medio||medN(o.medio)===f.medio)&&
     ((!f.producto&&!f.variante&&!f.cat)||itemsOf(o).some(i=>(!f.producto||norm(i.producto)===np)&&(!f.variante||(i.variante||'')===f.variante)&&(!f.cat||(i.categoria||'')===f.cat)))&&
     (!f.cliente||norm(o.cliente||'Mostrador')===nc)&&
     (!f.envio||(f.envio==='__none'?!o.envio:o.envio===f.envio))&&
@@ -274,20 +272,23 @@ function vVentas(d){
   (f.open?'<div class="card" style="margin-top:10px"><div class="form">'+
     '<div class="two">'+fld('fprod','Producto',sel('fprod',prodNames.map(n=>[n,n]),f.producto,'Todos','f:producto'))+fld('fvar','Tamaño',sel('fvar',VARIANTES.map(n=>[n,n]),f.variante,'Todos','f:variante'))+'</div>'+
     '<div class="two">'+fld('fcli','Cliente',sel('fcli',cliNames.map(n=>[n,n]),f.cliente,'Todos','f:cliente'))+fld('fenv','Envío',sel('fenv',ENVIOS.map(n=>[n,n]).concat([['__none','Sin envío']]),f.envio,'Todos','f:envio'))+'</div>'+
-    '<div class="two">'+fld('fmedio','Medio de pago',sel('fmedio',Object.entries(MLABEL).filter(([k])=>k in MEDIOS||d.ventas.some(o=>o.medio===k)),f.medio,'Todos'))+fld('fcat','Categoría',sel('fcat',cats.map(c=>[c,c]),f.cat,'Todas'))+'</div>'+
+    '<div class="two">'+fld('fmedio','Medio de pago',sel('fmedio',Object.entries(MEDIOS),f.medio,'Todos'))+fld('fcat','Categoría',sel('fcat',cats.map(c=>[c,c]),f.cat,'Todas'))+'</div>'+
     '<div class="two">'+fld('fdesde','Desde','<input class="inp" type="date" id="fdesde" data-in="fdesde" value="'+esc(f.desde)+'">')+fld('fhasta','Hasta','<input class="inp" type="date" id="fhasta" data-in="fhasta" value="'+esc(f.hasta)+'">')+'</div>'+
     '<div class="two">'+fld('fmin','Total desde ($)','<input class="inp" id="fmin" data-in="f:mmin" inputmode="decimal" placeholder="0" value="'+esc(f.mmin)+'">')+fld('fmax','Total hasta ($)','<input class="inp" id="fmax" data-in="f:mmax" inputmode="decimal" placeholder="Sin límite" value="'+esc(f.mmax)+'">')+'</div>'+
     '<p class="hint" style="margin:0">El estado se elige con los botones de arriba. La búsqueda también mira notas y envío.</p>'+
     '<div class="btns"><button class="btn ghost" data-a="exp-ventas-f">Exportar estas ventas (CSV)</button><button class="btn sec2" data-a="limpiar">Limpiar filtros</button></div></div></div>':'')+
   '<div id="lista" style="margin-top:6px">'+listaVentas(d)+'</div>'}
 function vDinero(d){
-  const sal=saldos(d),pend=d.ventas.filter(o=>valida(o)&&porCobrarDe(o)>0);
-  const all=movs(d),fl=S.dfilt,L=all.filter(x=>fl==='todos'||(fl==='ingresos'&&x.k==='cobro')||(fl==='gastos'&&x.k!=='cobro'&&x.k!=='transf')||(fl==='transf'&&x.k==='transf'));
-  let h='<div class="top"><h1>Dinero</h1></div><div class="list cards3">'+ctasVis(d).map(k=>'<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div><div class="k">'+CUENTAS[k]+'</div><div class="v num" style="margin:2px 0 0">'+m(sal[k])+'</div></div><span class="ava mv">'+ico(k==='efectivo'?'wal':'rec',20)+'</span></div>').join('')+'</div>'+
+  const sal=saldos(d),disp=sal.efectivo+sal.banco,pend=d.ventas.filter(o=>valida(o)&&porCobrarDe(o)>0);
+  const all=movs(d),fl=S.dfilt;
+  const L=fl==='pendiente'?[]:all.filter(x=>fl==='todos'||(fl==='ingresos'&&x.k==='cobro')||(fl==='gastos'&&(x.k==='gasto'||x.k==='retiro'))||(fl==='haberes'&&x.k==='haberes')||(fl==='transf'&&x.k==='transf'));
+  let h='<div class="top"><h1>Dinero</h1></div><section class="hero" aria-label="Dinero disponible"><div><div class="lbl">Dinero disponible</div><div class="big num">'+m(disp)+'</div><div class="sub">Efectivo + transferencias</div></div></section><div class="list cards3" style="margin-top:12px">'+ctasVis(d).map(k=>'<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div><div class="k">'+CUENTAS[k]+'</div><div class="v num" style="margin:2px 0 0">'+m(sal[k])+'</div></div><span class="ava mv">'+ico(k==='efectivo'?'wal':'swap',20)+'</span></div>').join('')+'</div>'+
   '<button class="card tap" style="margin-top:12px" data-a="goventas" data-per="todo" data-estado="pendiente"><div class="k">Pendiente de cobro</div><div class="v num">'+m(sum(pend,porCobrarDe))+'</div><div class="s">'+plural(pend.length,'operación','operaciones')+' · no está en tus saldos hasta que lo cobres</div></button>'+
   '<div class="btns" style="margin-top:12px"><button class="btn ghost" data-a="gasto" data-v="gasto">Gasto</button><button class="btn ghost" data-a="gasto" data-v="haberes">Pagos de haberes</button><button class="btn ghost" data-a="transf">Pasar entre cuentas</button></div>'+
   '<div class="sec"><h2>Movimientos</h2><button data-a="saldos">Saldos iniciales</button></div>'+
-  '<div class="chips" style="margin-top:0">'+[['todos','Todos'],['ingresos','Ingresos'],['gastos','Gastos y haberes'],['transf','Entre cuentas']].map(x=>'<button class="chip" data-a="dfilt" data-v="'+x[0]+'" aria-pressed="'+(fl===x[0])+'">'+x[1]+'</button>').join('')+'</div>';
+  '<div class="chips" style="margin-top:0">'+[['todos','Todos'],['ingresos','Ingresos'],['gastos','Gastos'],['haberes','Haberes'],['pendiente','Pendiente de cobro'],['transf','Entre cuentas']].map(x=>'<button class="chip" data-a="dfilt" data-v="'+x[0]+'" aria-pressed="'+(fl===x[0])+'">'+x[1]+'</button>').join('')+'</div>';
+  if(fl==='pendiente'){const ps=pend.slice().sort((a,b)=>b.ts-a.ts);
+    return h+(ps.length?'<p class="hint" style="margin:0 0 8px">Ventas con saldo por cobrar. Todavía no están en tus saldos.</p><div class="list">'+ps.map(o=>'<button class="item" data-a="venta" data-id="'+esc(o.id)+'"><span class="ava in">'+ico('dn',20)+'</span><span class="mid"><div class="t">'+esc(o.producto)+'</div><div class="d">'+esc(o.cliente||'Mostrador')+' · '+when(o.ts)+'</div></span><span class="r"><span class="amt num">'+m(porCobrarDe(o))+'</span></span></button>').join('')+'</div>':'<div class="empty"><b>Nada pendiente de cobro</b>Todas tus ventas están cobradas.</div>')}
   if(!L.length)return h+'<div class="empty"><b>Sin movimientos</b>Acá vas a ver cobros, gastos y pasajes entre cuentas.</div>';
   let cur=null;h+='<div class="list">';
   L.forEach(x=>{const dk=D0(x.ts);if(dk!==cur){cur=dk;const dia=L.filter(y=>D0(y.ts)===dk&&y.k!=='transf');const net=sum(dia,y=>y.k==='cobro'?y.monto:-y.monto);
@@ -335,9 +336,8 @@ function clientesHtml(d,r){
     '<p class="hint" style="margin-top:10px">Cuentan las ventas cobradas y pendientes. Las canceladas, las devueltas y las de "Mostrador" no entran. Tocá un cliente para ver sus ventas.</p></div>'}
 function vStats(d){
   const r=rng(S.sp),pr=rng(S.sp,true),s=stats(d,r),p=stats(d,pr),lab={hoy:'vs ayer',semana:'vs semana anterior',mes:'vs mes anterior'}[S.sp];
-  const disp=sum(Object.values(saldos(d)),x=>x);
   const med={};d.ventas.forEach(o=>{if(!valida(o))return;(o.cobros||[]).forEach(c=>{if(c.ts>=r[0]&&c.ts<r[1])med[c.medio]=(med[c.medio]||0)+c.monto})});
-  const mrows=Object.keys(MLABEL).filter(k=>med[k]).map(k=>({n:MLABEL[k],total:med[k]})).sort((a,b)=>b.total-a.total);
+  const med2={};for(const k in med)med2[medN(k)]=(med2[medN(k)]||0)+med[k];const mrows=Object.keys(med2).map(k=>({n:MLABEL[k],total:med2[k]})).sort((a,b)=>b.total-a.total);
   const prods=groupBy(s.vs,'producto').slice(0,5),cats=groupBy(s.vs,'categoria').slice(0,5);
   const bk=buckets(d),sel=S.sel<0?bk.length-1:S.sel,tot=sum(bk,b=>b.v);
   const ev={ventas:'Ventas',gastos:'Gastos',ganancia:'Ganancia estimada'}[S.evo];
@@ -348,8 +348,7 @@ function vStats(d){
   ind('Total cobrado',m(s.cob),'Dinero recibido por esas ventas')+ind('Por cobrar',m(s.porCobrar),'Lo que te deben de esas ventas')+
   ind('Gastos',m(s.gastos),(s.haberes?'Incluye haberes ('+m(s.haberes)+')':'Pagos y egresos registrados')+(s.retiros?' · sin retiros personales ('+m(s.retiros)+')':''))+
   ind('Ganancia estimada',m(s.ganancia),s.sinCosto?'Faltan costos en '+plural(s.sinCosto,'venta','ventas')+': puede estar sobreestimada':'Ventas menos costos y gastos')+
-  ind('Dinero disponible',m(disp),'Saldo total de tus cuentas ahora')+'</div>'+
-  '<div class="row2"><div class="card"><div class="k">Operaciones</div><div class="v num">'+s.ops+'</div></div><div class="card"><div class="k">Ticket promedio</div><div class="v num">'+m(s.ticket)+'</div></div></div>'+
+  ind('Operaciones',s.ops,'Ventas válidas del período')+ind('Ticket promedio',m(s.ticket),'Promedio por operación')+'</div>'+
   '<div class="sec"><h2>Cobrado por medio de pago</h2></div><div class="card">'+bars(mrows,Math.max(1,...mrows.map(x=>x.total)),'Todavía no cobraste nada en este período.')+'</div>'+
   '<div class="sec"><h2>Más vendidos</h2></div><div class="card"><div class="lab" style="margin-bottom:8px">Productos</div>'+bars(prods,Math.max(1,...prods.map(x=>x.total)),'Sin ventas en este período.')+
   (cats.length?'<div class="lab" style="margin:14px 0 8px">Categorías</div>'+bars(cats,Math.max(1,...cats.map(x=>x.total)),''):'')+'</div>'+
@@ -363,7 +362,7 @@ function vAjustes(d){
   '<div class="sec" style="margin-top:6px"><h2>Seguridad</h2></div><div class="set">'+(pin?row('pin-change','Cambiar PIN','Pide el PIN al abrir y después de un rato sin usar la app')+row('pin-off','Quitar PIN'):row('pin-on','Proteger con PIN','Bloqueo de 4 dígitos en este dispositivo'))+'</div>'+
   '<div class="sec"><h2>Exportar</h2></div><div class="set">'+row('exp-ventas','Ventas a Excel (CSV)','Todas las ventas, una fila por operación')+row('exp-movs','Movimientos de dinero (CSV)','Cobros, gastos, haberes, retiros y pasajes entre cuentas')+'</div>'+
   '<div class="sec"><h2>Copia de seguridad</h2></div><div class="set">'+row('backup','Descargar copia (JSON)','Ventas, gastos, movimientos y saldos')+row('restore','Restaurar desde una copia')+'</div><input type="file" id="restoref" accept=".json,application/json" hidden>'+
-  '<div class="sec"><h2>Cuentas</h2></div><div class="set">'+row('saldos','Saldos iniciales','Lo que tenías en efectivo, banco y billetera al empezar')+'</div>'+'<div class="sec"><h2>Sesión</h2></div><div class="set">'+row('logout','Cerrar sesión',esc(USER_EMAIL))+'</div>'+
+  '<div class="sec"><h2>Cuentas</h2></div><div class="set">'+row('saldos','Saldos iniciales','Lo que tenías en efectivo y por transferencia al empezar')+'</div>'+'<div class="sec"><h2>Sesión</h2></div><div class="set">'+row('logout','Cerrar sesión',esc(USER_EMAIL))+'</div>'+
   '<div class="sec"><h2>Historial de modificaciones</h2></div>'+
   (S.bitacora.length&&!d.demo?'<div class="card"><ul class="hist">'+S.bitacora.map(b=>'<li><b style="color:var(--ink)">'+fFull(b.ts)+'</b> · '+esc(b.msg)+'</li>').join('')+'</ul></div>':'<div class="empty"><b>Sin cambios importantes</b>Ediciones, cancelaciones, devoluciones y eliminaciones quedan anotadas acá.</div>')+
   (S.demoHidden&&!S.ventas.length?'<div class="set" style="margin-top:16px">'+row('showdemo','Mostrar datos de ejemplo')+'</div>':'')+
@@ -462,7 +461,7 @@ function shVenta(sh){
   '<button type="button" class="btn ghost" data-a="add-item">+ Agregar otro producto</button>'+
   '<div class="field"><label for="v-cli">Cliente</label><input class="inp" id="v-cli" list="dl-cli" autocomplete="off" placeholder="Nombre (vacío = Mostrador)" value="'+esc(o.cliente)+'"></div>'+
   '<div class="field"><span class="lab">Envío (opcional)</span><div class="opts" role="group" data-grp="envio">'+ENVIOS.map(v=>'<button type="button" class="chip" data-a="tog" data-v="'+v+'" aria-pressed="'+(o.envio===v)+'">'+v+'</button>').join('')+'</div></div>'+
-  '<div class="field"><span class="lab">Medio de pago</span>'+chipsOf('medio',medioOpts(o.medio),o.medio)+'</div>'+
+  '<div class="field"><span class="lab">Medio de pago</span>'+chipsOf('medio',medioOpts(medN(o.medio)),medN(o.medio))+'</div>'+
   '<div class="field"><span class="lab">Estado</span>'+chipsOf('estado',estados,o.estado)+'</div>'+
   '<div class="field"><label for="v-ts">Fecha y hora</label><input class="inp" type="datetime-local" id="v-ts" value="'+toInput(o.ts)+'"></div>'+
   '<div class="field"><label for="v-notas">Notas (opcional)</label><textarea class="inp" id="v-notas" rows="2" placeholder="Talle, color, entrega…">'+esc(o.notas)+'</textarea></div>'+
@@ -499,7 +498,7 @@ async function doSaveVenta(){
 function shCobro(sh){const o=findV(sh.id);if(!o)return null;const pc=porCobrarDe(o);
   return head('Registrar cobro')+'<p class="hint" style="margin:-6px 0 14px">'+esc(o.producto)+' · '+esc(o.cliente||'Mostrador')+'. Falta cobrar <b class="num">'+m(pc)+'</b>.</p><div class="form">'+
   '<div class="field"><label for="c-monto">Monto recibido ($)</label><input class="inp" id="c-monto" inputmode="decimal" value="'+inputNum(pc)+'"></div>'+
-  '<div class="field"><span class="lab">Medio de pago</span>'+chipsOf('medio',medioOpts(o.medio),o.medio)+'</div>'+
+  '<div class="field"><span class="lab">Medio de pago</span>'+chipsOf('medio',medioOpts(medN(o.medio)),medN(o.medio))+'</div>'+
   '<div class="err" id="c-err" role="alert"></div><button class="btn" data-a="save-cobro">Registrar cobro</button></div>'}
 async function doSaveCobro(){
   const id=S.sheet.id,o=cloneV(findV(id)),err=t=>{$('#c-err').textContent=t},pc=porCobrarDe(o),monto=toC(parseAR(val('c-monto')));
@@ -514,7 +513,7 @@ function shGasto(sh){
   return head(g?TT[1]:TT[0])+'<div class="form">'+
   '<div class="field"><label for="g-con">Concepto</label><input class="inp" id="g-con" autocomplete="off" placeholder="'+TT[2]+'" value="'+esc(o.concepto)+'"></div>'+
   '<div class="field"><label for="g-monto">Monto ($)</label><input class="inp" id="g-monto" inputmode="decimal" value="'+inputNum(o.monto)+'"></div>'+
-  '<div class="field"><span class="lab">Salió de</span>'+chipsOf('cuenta',cuentaOpts(o.cuenta),o.cuenta)+'</div>'+
+  '<div class="field"><span class="lab">Salió de</span>'+chipsOf('cuenta',cuentaOpts(),ctaN(o.cuenta))+'</div>'+
   '<div class="field"><label for="g-ts">Fecha y hora</label><input class="inp" type="datetime-local" id="g-ts" value="'+toInput(o.ts)+'"></div>'+
   '<div class="field"><label for="g-notas">Notas (opcional)</label><input class="inp" id="g-notas" value="'+esc(o.notas)+'"></div>'+
   '<div class="err" id="g-err" role="alert"></div><button class="btn" data-a="save-gasto">Guardar</button>'+(g?'<button class="btn ghost" data-a="del-gasto">Eliminar</button>':'')+'</div>'}
@@ -529,8 +528,8 @@ async function doSaveGasto(){
 function shTransf(sh){
   const t=sh.id?D().transf.find(x=>x.id===sh.id):null,o=t||{ts:Date.now(),desde:'efectivo',hasta:'banco',monto:0,notas:''};
   return head(t?'Editar pasaje':'Pasar entre cuentas')+'<div class="form">'+
-  '<div class="field"><span class="lab">De</span>'+chipsOf('desde',Object.entries(CUENTAS).filter(([k])=>ctasVis(D()).includes(k)||k===o.desde),o.desde)+'</div>'+
-  '<div class="field"><span class="lab">A</span>'+chipsOf('hasta',Object.entries(CUENTAS).filter(([k])=>ctasVis(D()).includes(k)||k===o.hasta),o.hasta)+'</div>'+
+  '<div class="field"><span class="lab">De</span>'+chipsOf('desde',cuentaOpts(),ctaN(o.desde))+'</div>'+
+  '<div class="field"><span class="lab">A</span>'+chipsOf('hasta',cuentaOpts(),ctaN(o.hasta))+'</div>'+
   '<div class="field"><label for="t-monto">Monto ($)</label><input class="inp" id="t-monto" inputmode="decimal" value="'+inputNum(o.monto)+'"></div>'+
   '<div class="field"><label for="t-ts">Fecha y hora</label><input class="inp" type="datetime-local" id="t-ts" value="'+toInput(o.ts)+'"></div>'+
   '<div class="err" id="t-err" role="alert"></div><button class="btn" data-a="save-transf">Guardar</button>'+(t?'<button class="btn ghost" data-a="del-transf">Eliminar</button>':'')+'</div>'}
@@ -542,10 +541,10 @@ async function doSaveTransf(){
   try{await put('transf',old?old.id:newId(),{ts,desde,hasta,monto,notas:''});closeSheet();toast('Guardado')}catch(e){err('No se pudo guardar. Probá de nuevo.')}}
 function shSaldos(){const s=(D().config.saldos)||{};
   return head('Saldos iniciales')+'<p class="hint" style="margin:-6px 0 14px">Cargá lo que tenías en cada cuenta antes de empezar a usar ARGYR. Las ventas cobradas y los gastos se suman y restan desde ahí.</p><div class="form">'+
-  ctasVis(D()).map(k=>'<div class="field"><label for="s-'+k+'">'+CUENTAS[k]+' ($)</label><input class="inp" id="s-'+k+'" inputmode="decimal" value="'+inputNum(s[k])+'"></div>').join('')+
+  ctasVis(D()).map(k=>'<div class="field"><label for="s-'+k+'">'+CUENTAS[k]+' ($)</label><input class="inp" id="s-'+k+'" inputmode="decimal" value="'+inputNum((s[k]||0)+(k==='banco'?(s.billetera||0):0))+'"></div>').join('')+
   '<div class="err" id="s-err" role="alert"></div><button class="btn" data-a="save-saldos">Guardar saldos</button></div>'}
 async function doSaveSaldos(){
-  const saldos={};for(const k in CUENTAS){const v=val('s-'+k).trim();const n=v?parseAR(v):0;if(isNaN(n)){$('#s-err').textContent='Revisá el monto de '+CUENTAS[k]+'.';return}saldos[k]=toC(n)}
+  const saldos={};for(const k of ['efectivo','banco']){const v=val('s-'+k).trim();const n=v?parseAR(v):0;if(isNaN(n)){$('#s-err').textContent='Revisá el monto de '+CUENTAS[k]+'.';return}saldos[k]=toC(n)}
   try{await put('meta','config',Object.assign({},S.config,{saldos}));await log('Saldos iniciales actualizados');closeSheet();toast('Saldos guardados')}catch(e){$('#s-err').textContent='No se pudo guardar. Probá de nuevo.'}}
 function shConfirm(sh){return head(esc(sh.title))+'<p style="margin:0 0 16px">'+esc(sh.msg)+'</p><div class="btns"><button class="btn sec2" data-a="close">Volver</button><button class="btn '+(sh.danger?'danger':'')+'" data-a="confirm-yes">'+esc(sh.yes)+'</button></div>'}
 function confirmar(title,msg,yes,fn,danger){openSheet({type:'confirm',title,msg,yes,fn,danger})}

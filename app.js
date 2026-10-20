@@ -44,7 +44,7 @@ const newId=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const sum=(a,f)=>a.reduce((x,y)=>x+f(y),0);
 /* ---------- estado ---------- */
 const S={ventas:[],gastos:[],transf:[],config:{},bitacora:[],ready:false,usingDb:false,tab:'inicio',
-  f:{estado:'todas',per:'mes',q:'',medio:'',cat:'',producto:'',variante:'',cliente:'',envio:'',mmin:'',mmax:'',desde:'',hasta:'',open:false},
+  f:{estado:'todas',per:'mes',q:'',medio:'',cat:'',producto:'',variante:'',cliente:'',envio:'',mmin:'',mmax:'',desc:'',desde:'',hasta:'',open:false},
   vmetric:'vendido',sp:'mes',cliAll:true,cliBy:'monto',evo:'ventas',span:'dias',sel:-1,dfilt:'todos',demoHidden:false,sheet:null};
 try{S.demoHidden=localStorage.getItem('argyr:demoHidden')==='1'}catch(e){}
 /* ---------- almacenamiento: db de la cuenta, o este navegador si no hay ---------- */
@@ -118,6 +118,8 @@ const VARIANTES=['Simple','Doble','Único'];
 const norm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
 const itName=it=>(it.producto||'')+(it.variante?' · '+it.variante:'');
 const itTotal=it=>Math.round(it.cantidad*it.precio);
+const descF=o=>o.descMonto>0?o.total/(o.total+o.descMonto):1;
+const pctStr=n=>String(n).replace('.',',');
 const unidades=o=>sum(itemsOf(o),i=>i.cantidad);
 const valida=o=>o.estado==='pendiente'||o.estado==='cobrada';
 const cobrado=o=>valida(o)?sum(o.cobros||[],c=>c.monto):0;
@@ -170,14 +172,14 @@ function movs(d){const a=[];
   d.transf.forEach(t=>a.push({k:'transf',ts:t.ts,monto:t.monto,desde:t.desde,hasta:t.hasta,t:CUENTAS[ctaN(t.desde)]+' → '+CUENTAS[ctaN(t.hasta)],ref:t.id}));
   return a.sort((x,y)=>y.ts-x.ts)}
 function stats(d,r){const inR=t=>t>=r[0]&&t<r[1];
-  const vs=d.ventas.filter(o=>valida(o)&&inR(o.ts));
-  const vendido=sum(vs,o=>o.total),cob=sum(vs,cobrado),porCobrar=sum(vs,porCobrarDe);
+  const va=d.ventas.filter(o=>valida(o)&&inR(o.ts)),vs=va.filter(o=>o.estado==='cobrada');
+  const vendido=sum(vs,o=>o.total),cob=sum(va,cobrado),porCobrar=sum(va,porCobrarDe),pend=va.filter(o=>porCobrarDe(o)>0).length;
   let costo=0,sinCosto=0;vs.forEach(o=>{let falta=false;itemsOf(o).forEach(it=>{if(it.costo>0)costo+=Math.round(it.costo*it.cantidad);else falta=true});if(falta)sinCosto++});
   const gastos=sum(d.gastos.filter(g=>g.tipo==='gasto'&&inR(g.ts)),g=>g.monto),haberes=sum(d.gastos.filter(g=>g.tipo==='haberes'&&inR(g.ts)),g=>g.monto);
   const retiros=sum(d.gastos.filter(g=>g.tipo==='retiro'&&inR(g.ts)),g=>g.monto);
-  return {vs,vendido,cob,porCobrar,ops:vs.length,ticket:vs.length?Math.round(vendido/vs.length):0,costo,sinCosto,gastos,haberes,egresos:gastos+haberes,retiros,ganancia:vendido-costo-gastos-haberes}}
-function groupBy(vs,key){const mp=new Map();vs.forEach(o=>itemsOf(o).forEach(it=>{const raw=(it[key]||'').trim();if(!raw)return;const k=raw.toLowerCase();
-  const e=mp.get(k)||{n:raw,total:0,u:0};e.total+=itTotal(it);e.u+=it.cantidad;mp.set(k,e)}));
+  return {vs,pend,vendido,cob,porCobrar,ops:vs.length,ticket:vs.length?Math.round(vendido/vs.length):0,costo,sinCosto,gastos,haberes,egresos:gastos+haberes,retiros,ganancia:vendido-costo-gastos-haberes}}
+function groupBy(vs,key){const mp=new Map();vs.forEach(o=>{const fd=descF(o);itemsOf(o).forEach(it=>{const raw=(it[key]||'').trim();if(!raw)return;const k=raw.toLowerCase();
+  const e=mp.get(k)||{n:raw,total:0,u:0};e.total+=Math.round(itTotal(it)*fd);e.u+=it.cantidad;mp.set(k,e)})});
   return [...mp.values()].sort((a,b)=>b.total-a.total)}
 
 /* ---------- vistas ---------- */
@@ -223,7 +225,7 @@ function vInicio(d){
   const mv=movs(d).slice(0,6);
   return '<div class="top"><div><svg class="logo" role="img" aria-label="ARGYR"><use href="#logo"/></svg><h1>Mi actividad</h1><div class="date">'+fDia(Date.now())+'</div></div><button class="icon-btn" data-a="tab" data-v="ajustes" aria-label="Ajustes">'+ico('gear')+'</button></div>'+
   '<section class="hero" aria-label="Ventas del día"><div class="per" role="group" aria-label="Día">'+[['ayer','Ayer'],['hoy','Hoy']].map(x=>'<button data-a="hday" data-v="'+x[0]+'" aria-pressed="'+((S.hday==='ayer')===(x[0]==='ayer'))+'">'+x[1]+'</button>').join('')+'</div>'+
-  '<div><div class="lbl">Ventas de '+(ay?'ayer':'hoy')+'</div><div class="big num">'+m(st.vendido)+'</div><div class="sub">'+plural(st.ops,'operación válida','operaciones válidas')+'</div></div>'+
+  '<div><div class="lbl">Ventas de '+(ay?'ayer':'hoy')+'</div><div class="big num">'+m(st.vendido)+'</div><div class="sub">'+plural(st.ops,'venta cobrada','ventas cobradas')+'</div></div>'+
   '<div class="accts"><div class="acct"><small>Cobrado</small><b class="num">'+m(st.cob)+'</b></div><div class="acct"><small>Por cobrar</small><b class="num">'+m(st.porCobrar)+'</b></div><div class="acct"><small>Total pedidos</small><b class="num">'+pedidos+'</b></div></div></section>'+
   '<div class="sec"><h2>Últimos movimientos</h2>'+(mv.length?'<button data-a="tab" data-v="dinero">Ver todos</button>':'')+'</div>'+
   (mv.length?'<div class="list">'+mv.map(movRow).join('')+'</div>':'<div class="empty"><b>Todavía no hay movimientos</b>Cuando registres una venta cobrada o un gasto, aparece acá.</div>')}
@@ -233,26 +235,26 @@ function ventasBase(d){const f=S.f;let from=0,to=Infinity;
   return d.ventas.filter(o=>o.ts>=from&&o.ts<to&&(!f.medio||medN(o.medio)===f.medio)&&
     ((!f.producto&&!f.variante&&!f.cat)||itemsOf(o).some(i=>(!f.producto||norm(i.producto)===np)&&(!f.variante||(i.variante||'')===f.variante)&&(!f.cat||(i.categoria||'')===f.cat)))&&
     (!f.cliente||norm(o.cliente||'Mostrador')===nc)&&
-    (!f.envio||(f.envio==='__none'?!o.envio:o.envio===f.envio))&&
+    (!f.envio||(f.envio==='__none'?!o.envio:o.envio===f.envio))&&(!f.desc||(f.desc==='con'?o.descMonto>0:!(o.descMonto>0)))&&
     (isNaN(mn)||o.total>=toC(mn))&&(isNaN(mx)||o.total<=toC(mx))&&
     (!q||[o.cliente,o.notas,o.envio].concat(itemsOf(o).map(i=>itName(i)+' '+(i.categoria||''))).join(' ').toLowerCase().includes(q))).sort((a,b)=>b.ts-a.ts)}
 function ventaRow(o){
   const par=o.estado==='pendiente'&&cobrado(o)>0;
   const tag=par?'<span class="tag parcial">Parcial</span>':'<span class="tag '+o.estado+'">'+ESTADOS[o.estado]+'</span>';
   const dead=!valida(o)?' style="text-decoration:line-through;opacity:.6"':'';
-  return '<button class="item" data-a="venta" data-id="'+esc(o.id)+'"><span class="ava">'+esc((o.producto||'?').charAt(0).toUpperCase())+'</span><span class="mid"><div class="t">'+esc(o.producto)+'</div><div class="d">'+esc(o.cliente||'Mostrador')+' · '+(itemsOf(o).length>1?itemsOf(o).length+' productos · ':'')+qty(unidades(o))+' u. · '+MLABEL[o.medio]+(o.envio?' · '+esc(o.envio):'')+' · '+when(o.ts)+'</div></span>'+
+  return '<button class="item" data-a="venta" data-id="'+esc(o.id)+'"><span class="ava">'+esc((o.producto||'?').charAt(0).toUpperCase())+'</span><span class="mid"><div class="t">'+esc(o.producto)+'</div><div class="d">'+esc(o.cliente||'Mostrador')+' · '+(itemsOf(o).length>1?itemsOf(o).length+' productos · ':'')+qty(unidades(o))+' u. · '+MLABEL[o.medio]+(o.envio?' · '+esc(o.envio):'')+(o.descMonto>0?' · desc. '+pctStr(o.descPct)+'%':'')+' · '+when(o.ts)+'</div></span>'+
   '<span class="r"><span class="amt num"'+dead+'>'+m(o.total)+'</span>'+tag+'</span></button>'}
 function listaVentas(d){
   const base=ventasBase(d),f=S.f,L=f.estado==='todas'?base:base.filter(o=>o.estado===f.estado);
   if(!L.length)return '<div class="empty"><b>'+(d.ventas.length?'No hay ventas con esos filtros':'Todavía no registraste ventas')+'</b>'+(d.ventas.length?'Probá con otro período o limpiá los filtros.':'Tocá el botón + para anotar la primera.')+'</div>';
   let h='<div class="list">',cur=null;
-  L.forEach(o=>{const dk=D0(o.ts);if(dk!==cur){cur=dk;const dia=L.filter(x=>D0(x.ts)===dk&&valida(x));
-    h+='</div><div class="day"><b>'+esc(dayName(o.ts))+'</b><span class="num">'+m(sum(dia,x=>x.total))+' · '+plural(dia.length,'operación','operaciones')+'</span></div><div class="list">'}
+  L.forEach(o=>{const dk=D0(o.ts);if(dk!==cur){cur=dk;const dia=L.filter(x=>D0(x.ts)===dk&&x.estado==='cobrada'),pn=L.filter(x=>D0(x.ts)===dk&&x.estado==='pendiente').length;
+    h+='</div><div class="day"><b>'+esc(dayName(o.ts))+'</b><span class="num">'+m(sum(dia,x=>x.total))+' · '+plural(dia.length,'cobrada','cobradas')+(pn?' · '+plural(pn,'pendiente','pendientes'):'')+'</span></div><div class="list">'}
     h+=ventaRow(o)});
   return h+'</div>'}
 function vVentas(d){
-  const f=S.f,base=ventasBase(d),vs=base.filter(valida);
-  const val={vendido:sum(vs,o=>o.total),cobrado:sum(vs,cobrado),porcobrar:sum(vs,porCobrarDe)}[S.vmetric];
+  const f=S.f,base=ventasBase(d),vs=base.filter(valida),vc=vs.filter(o=>o.estado==='cobrada'),pp=vs.filter(o=>porCobrarDe(o)>0);
+  const val={vendido:sum(vc,o=>o.total),cobrado:sum(vs,cobrado),porcobrar:sum(vs,porCobrarDe)}[S.vmetric];
   const lab={vendido:'Total vendido',cobrado:'Total cobrado',porcobrar:'Por cobrar'}[S.vmetric];
   const cnt=e=>e==='todas'?base.length:base.filter(o=>o.estado===e).length;
   const cats=[...new Set(d.ventas.flatMap(o=>itemsOf(o).map(i=>i.categoria)).filter(Boolean))].sort();
@@ -260,11 +262,11 @@ function vVentas(d){
   const sel=(id,opts,cur,ph,key)=>'<select class="inp" id="'+id+'" data-in="'+(key||id)+'"><option value="">'+ph+'</option>'+opts.map(o=>'<option value="'+esc(o[0])+'"'+(o[0]===cur?' selected':'')+'>'+esc(o[1])+'</option>').join('')+'</select>';
   const prodNames=(()=>{const seen=new Set(),a=[];MENU.map(x=>x.n).concat(d.ventas.flatMap(o=>itemsOf(o).map(i=>(i.producto||'').trim()))).forEach(n=>{const k=norm(n);if(n&&!seen.has(k)){seen.add(k);a.push(n)}});return a})();
   const cliNames=(()=>{const seen=new Set(),a=[];d.ventas.slice().sort((x,y)=>y.ts-x.ts).forEach(o=>{const n=(o.cliente||'Mostrador').trim(),k=norm(n);if(!seen.has(k)){seen.add(k);a.push(n)}});return a.sort((x,y)=>x.localeCompare(y,'es'))})();
-  const nF=(f.medio?1:0)+(f.cat?1:0)+(custom?1:0)+(f.producto?1:0)+(f.variante?1:0)+(f.cliente?1:0)+(f.envio?1:0)+((f.mmin||f.mmax)?1:0);
+  const nF=(f.medio?1:0)+(f.cat?1:0)+(custom?1:0)+(f.producto?1:0)+(f.variante?1:0)+(f.cliente?1:0)+(f.envio?1:0)+(f.desc?1:0)+((f.mmin||f.mmax)?1:0);
   const fld=(id,label,inner)=>'<div class="field"><label for="'+id+'">'+label+'</label>'+inner+'</div>';
   return '<div class="top"><h1>Ventas</h1><button class="pill-btn" data-a="nueva">'+ico('plus',18)+' Venta</button></div>'+
   '<section class="hero"><div class="per" role="group" aria-label="Período">'+['hoy','semana','mes','todo'].map(p=>'<button data-a="per" data-v="'+p+'" aria-pressed="'+(!custom&&f.per===p)+'">'+(p==='semana'?'Semana':PER[p])+'</button>').join('')+'</div>'+
-  '<div><div class="lbl">'+lab+(custom?' · rango elegido':'')+'</div><div class="big num">'+m(val)+'</div><div class="sub">'+plural(vs.length,'operación válida','operaciones válidas')+'</div></div>'+
+  '<div><div class="lbl">'+lab+(custom?' · rango elegido':'')+'</div><div class="big num">'+m(val)+'</div><div class="sub">'+({vendido:plural(vc.length,'venta cobrada','ventas cobradas'),cobrado:plural(vs.length,'operación válida','operaciones válidas'),porcobrar:plural(pp.length,'pendiente','pendientes')+' · no suman a ventas'})[S.vmetric]+'</div></div>'+
   '<div class="seg" role="group" aria-label="Indicador">'+[['vendido','Vendido'],['cobrado','Cobrado'],['porcobrar','Por cobrar']].map(x=>'<button data-a="vmetric" data-v="'+x[0]+'" aria-pressed="'+(S.vmetric===x[0])+'">'+x[1]+'</button>').join('')+'</div></section>'+
   '<div class="chips" role="group" aria-label="Estado">'+['todas','cobrada','pendiente','cancelada','devuelta'].map(e=>'<button class="chip" data-a="estado" data-v="'+e+'" aria-pressed="'+(f.estado===e)+'">'+(e==='todas'?'Todas':ESTADOS[e])+' <i>'+cnt(e)+'</i></button>').join('')+'</div>'+
   '<div class="search"><input class="inp" id="q" data-in="q" type="search" placeholder="Buscar por producto o cliente" value="'+esc(f.q)+'" autocomplete="off"><button class="icon-btn" data-a="filtros" aria-label="Filtros" aria-expanded="'+f.open+'" style="'+(nF?'color:var(--accent)':'')+'">'+ico('flt',20)+(nF?'<i class="bdg">'+nF+'</i>':'')+'</button></div>'+
@@ -273,6 +275,7 @@ function vVentas(d){
     '<div class="two">'+fld('fprod','Producto',sel('fprod',prodNames.map(n=>[n,n]),f.producto,'Todos','f:producto'))+fld('fvar','Tamaño',sel('fvar',VARIANTES.map(n=>[n,n]),f.variante,'Todos','f:variante'))+'</div>'+
     '<div class="two">'+fld('fcli','Cliente',sel('fcli',cliNames.map(n=>[n,n]),f.cliente,'Todos','f:cliente'))+fld('fenv','Envío',sel('fenv',ENVIOS.map(n=>[n,n]).concat([['__none','Sin envío']]),f.envio,'Todos','f:envio'))+'</div>'+
     '<div class="two">'+fld('fmedio','Medio de pago',sel('fmedio',Object.entries(MEDIOS),f.medio,'Todos'))+fld('fcat','Categoría',sel('fcat',cats.map(c=>[c,c]),f.cat,'Todas'))+'</div>'+
+    '<div class="two">'+fld('fdesc','Descuento',sel('fdesc',[['con','Con descuento'],['sin','Sin descuento']],f.desc,'Todos','f:desc'))+'<div></div></div>'+
     '<div class="two">'+fld('fdesde','Desde','<input class="inp" type="date" id="fdesde" data-in="fdesde" value="'+esc(f.desde)+'">')+fld('fhasta','Hasta','<input class="inp" type="date" id="fhasta" data-in="fhasta" value="'+esc(f.hasta)+'">')+'</div>'+
     '<div class="two">'+fld('fmin','Total desde ($)','<input class="inp" id="fmin" data-in="f:mmin" inputmode="decimal" placeholder="0" value="'+esc(f.mmin)+'">')+fld('fmax','Total hasta ($)','<input class="inp" id="fmax" data-in="f:mmax" inputmode="decimal" placeholder="Sin límite" value="'+esc(f.mmax)+'">')+'</div>'+
     '<p class="hint" style="margin:0">El estado se elige con los botones de arriba. La búsqueda también mira notas y envío.</p>'+
@@ -323,7 +326,7 @@ function chart(bk){
   return s+'</svg>'}
 function clientesHtml(d,r){
   const rg=S.cliAll?[0,Infinity]:r,mp=new Map(),porMonto=S.cliBy==='monto';
-  d.ventas.forEach(o=>{if(!valida(o)||o.ts<rg[0]||o.ts>=rg[1])return;const nm=(o.cliente||'').trim(),k=norm(nm);if(!k||k==='mostrador')return;
+  d.ventas.forEach(o=>{if(o.estado!=='cobrada'||o.ts<rg[0]||o.ts>=rg[1])return;const nm=(o.cliente||'').trim(),k=norm(nm);if(!k||k==='mostrador')return;
     const e=mp.get(k)||{n:nm,total:0,ops:0,last:0};e.total+=o.total;e.ops++;if(o.ts>e.last){e.last=o.ts;e.n=nm}mp.set(k,e)});
   const L=[...mp.values()].sort((a,b)=>porMonto?(b.total-a.total||b.ops-a.ops):(b.ops-a.ops||b.total-a.total)).slice(0,10);
   const mx=L.length?Math.max(1,...L.map(x=>porMonto?x.total:x.ops)):1;
@@ -332,7 +335,7 @@ function clientesHtml(d,r){
     sg('cliall',[['todo','Todo el tiempo'],['per',PER[S.sp]]],S.cliAll?'todo':'per')+sg('cliby',[['monto','Por monto'],['compras','Por compras']],S.cliBy)+'</div>'+
     (L.length?'<div class="clis">'+L.map((x,i)=>'<button class="cli" data-a="cli" data-v="'+esc(x.n)+'"><span class="rk'+(i<3?' top':'')+'">'+(i+1)+'</span><span class="mid"><b>'+esc(x.n)+'</b><small>'+plural(x.ops,'compra','compras')+' · última '+fCorta(x.last)+'</small></span><b class="num">'+m(x.total)+'</b><span class="track"><span class="fill" style="width:'+Math.max(3,Math.round((porMonto?x.total:x.ops)/mx*100))+'%"></span></span></button>').join('')+'</div>':
     '<p class="hint" style="margin-top:12px">Todavía no hay clientes con nombre en este período. Escribí el nombre al cargar una venta para ver quién compra más.</p>')+
-    '<p class="hint" style="margin-top:10px">Cuentan las ventas cobradas y pendientes. Las canceladas, las devueltas y las de "Mostrador" no entran. Tocá un cliente para ver sus ventas.</p></div>'}
+    '<p class="hint" style="margin-top:10px">Cuentan solo las ventas cobradas. Las pendientes, canceladas, devueltas y las de "Mostrador" no entran. Tocá un cliente para ver sus ventas.</p></div>'}
 function vStats(d){
   const r=rng(S.sp),pr=rng(S.sp,true),s=stats(d,r),p=stats(d,pr),lab={hoy:'vs ayer',semana:'vs semana anterior',mes:'vs mes anterior'}[S.sp];
   const med={};d.ventas.forEach(o=>{if(!valida(o))return;(o.cobros||[]).forEach(c=>{if(c.ts>=r[0]&&c.ts<r[1])med[c.medio]=(med[c.medio]||0)+c.monto})});
@@ -343,12 +346,12 @@ function vStats(d){
   const ind=(k,v,sub,extra,cls)=>'<div class="card'+(cls?' '+cls:'')+'"><div class="k">'+k+'</div><div class="v num">'+v+'</div>'+(extra||'')+'<div class="s">'+sub+'</div></div>';
   return '<div class="top"><h1>Estadísticas</h1></div>'+
   '<div class="seg light" role="group" aria-label="Período">'+['hoy','semana','mes'].map(x=>'<button data-a="sp" data-v="'+x+'" aria-pressed="'+(S.sp===x)+'">'+(x==='semana'?'Semana':PER[x])+'</button>').join('')+'</div>'+
-  '<div class="ind" style="margin-top:12px">'+ind('Total vendido',m(s.vendido),'Ventas válidas del período',deltaTag(s.vendido,p.vendido,lab))+
-  ind('Total cobrado',m(s.cob),'Dinero recibido por esas ventas')+ind('Por cobrar',m(s.porCobrar),'Lo que te deben de esas ventas')+
+  '<div class="ind" style="margin-top:12px">'+ind('Total vendido',m(s.vendido),'Solo ventas cobradas · las pendientes no suman',deltaTag(s.vendido,p.vendido,lab))+
+  ind('Total cobrado',m(s.cob),'Dinero recibido por esas ventas')+ind('Por cobrar',m(s.porCobrar),plural(s.pend,'pedido pendiente','pedidos pendientes')+' · no suman a ventas')+
   ind('Gastos',m(s.gastos),'Sin haberes · fijos '+m(gStats(d,r).fijo),'','gas')+ind('Haberes',m(s.haberes),'Pagos de haberes del período','','hab')+
   ind('Total egresos',m(s.egresos),'Gastos + haberes'+(s.retiros?' · sin retiros personales ('+m(s.retiros)+')':''))+
   ind('Ganancia estimada',m(s.ganancia),s.sinCosto?'Faltan costos en '+plural(s.sinCosto,'venta','ventas')+': puede estar sobreestimada':'Ventas menos costos, gastos y haberes')+
-  ind('Operaciones',s.ops,'Ventas válidas del período')+ind('Total pedidos',d.ventas.filter(o=>o.ts>=r[0]&&o.ts<r[1]).length,'Con cancelados y devueltos')+ind('Ticket promedio',m(s.ticket),'Promedio por operación')+'</div>'+
+  ind('Operaciones',s.ops,'Ventas cobradas del período')+ind('Total pedidos',d.ventas.filter(o=>o.ts>=r[0]&&o.ts<r[1]).length,'Con cancelados y devueltos')+ind('Ticket promedio',m(s.ticket),'Promedio por operación')+'</div>'+
   '<div class="sec"><h2>Cobrado por medio de pago</h2></div><div class="card">'+bars(mrows,Math.max(1,...mrows.map(x=>x.total)),'Todavía no cobraste nada en este período.')+'</div>'+
   '<div class="sec"><h2>Más vendidos</h2></div><div class="card"><div class="lab" style="margin-bottom:8px">Productos</div>'+bars(prods,Math.max(1,...prods.map(x=>x.total)),'Sin ventas en este período.')+
   (cats.length?'<div class="lab" style="margin:14px 0 8px">Categorías</div>'+bars(cats,Math.max(1,...cats.map(x=>x.total)),''):'')+'</div>'+
@@ -657,8 +660,8 @@ function statsExtra(d,r,pr,s){
   if(lim){const g=gastoMes(d,n),p=g/lim*100,col=p>100?'var(--bad)':p>=80?'var(--warn)':'var(--ok)';
     h+='<div class="sec"><h2>Presupuesto del mes</h2></div><div class="card"><div class="v num" style="font-size:22px;font-weight:800">'+m(g)+' <small style="font-size:14px;color:var(--muted);font-weight:600">de '+m(lim)+'</small></div><div class="pbar"><span style="width:'+Math.min(100,p)+'%;background:'+col+'"></span></div><div class="s" style="color:var(--muted);font-size:13px">'+f1(p)+'% consumido · '+(p>100?'<b class="neg">superado por '+m(g-lim)+'</b>':'te quedan <b>'+m(lim-g)+'</b>')+'</div></div>'}
   const env={};s.vs.forEach(o=>{const k=o.envio||'Sin envío';const e=env[k]||(env[k]={n:k,c:0,v:0});e.c++;e.v+=o.total});
-  const er=Object.values(env).sort((a,b)=>b.v-a.v).map(e=>({n:e.n+' · '+plural(e.c,'pedido','pedidos'),total:e.v}));
-  h+='<div class="sec"><h2>Pedidos por envío</h2></div><div class="card">'+(er.length?bars(er,Math.max(1,...er.map(x=>x.total)),''):'<p class="hint">Sin pedidos en este período.</p>')+'</div>';
+  const er=Object.values(env).sort((a,b)=>b.v-a.v).map(e=>({n:e.n+' · '+plural(e.c,'venta','ventas'),total:e.v}));
+  h+='<div class="sec"><h2>Ventas por envío</h2></div><div class="card">'+(er.length?bars(er,Math.max(1,...er.map(x=>x.total)),''):'<p class="hint">Sin ventas cobradas en este período.</p>')+'</div>';
   const todos=d.ventas.filter(o=>o.ts>=r[0]&&o.ts<r[1]),es=Object.keys(ESTADOS).map(k=>({n:ESTADOS[k],v:todos.filter(o=>o.estado===k).length})).filter(x=>x.v);
   h+='<div class="sec"><h2>Pedidos por estado</h2></div><div class="card">'+(es.length?ubars(es,x=>String(x),''):'<p class="hint">Sin pedidos en este período.</p>')+'</div>';
   return h}
@@ -691,7 +694,11 @@ function openSheet(sh){
 function readItems(){return [...document.querySelectorAll('#items .itm')].map(r=>{const v=r.querySelector('.vars [aria-pressed="true"]');return {producto:r.querySelector('.i-prod').value,variante:v?v.dataset.v:'',cantidad:r.querySelector('.i-cant').value,precio:r.querySelector('.i-precio').value,costo:r.querySelector('.i-costo').value,categoria:r.querySelector('.i-cat').value}})}
 function calcTotal(){let t=0;const rows=document.querySelectorAll('#items .itm');
   rows.forEach(r=>{const c=parseAR(r.querySelector('.i-cant').value),p=parseAR(r.querySelector('.i-precio').value);const s=(isFinite(c)&&isFinite(p))?Math.round(c*toC(p)):0;t+=s;const e=r.querySelector('.i-sub');if(e)e.textContent=m(s)});
-  const el=$('#v-total');if(el)el.textContent=m(t);const tl=$('#v-tl');if(tl)tl.textContent=rows.length>1?'Total · '+rows.length+' productos':'Total'}
+  const pi=$('#v-dpct'),pv=pi?parseAR(pi.value):NaN,pct=(isFinite(pv)&&pv>0)?Math.min(100,pv):0,dm=Math.round(t*pct/100);
+  const el=$('#v-total');if(el)el.textContent=m(t-dm);
+  const dme=$('#v-dm');if(dme)dme.textContent='- '+m(dm);
+  const sl=$('#v-subl');if(sl){sl.hidden=!(dm>0);sl.innerHTML='<span>Subtotal '+m(t)+'</span><b class="neg">Descuento -'+m(dm)+'</b>'}
+  document.querySelectorAll('[data-a=dpct]').forEach(b=>b.setAttribute('aria-pressed',String(!!pi&&pv===+b.dataset.v)));const tl=$('#v-tl');if(tl)tl.textContent=rows.length>1?'Total · '+rows.length+' productos':'Total'}
 const rowVar=row=>{const v=row.querySelector('.vars [aria-pressed="true"]');return v?v.dataset.v:''};
 function lookupItem(name,vari){const q=norm(name);if(!q)return null;let p=null;
   S.ventas.slice().sort((a,b)=>b.ts-a.ts).some(o=>itemsOf(o).some(it=>{if(norm(it.producto)===q&&(it.variante||'')===(vari||'')&&it.precio>0){p=it;return true}return false}));return p}
@@ -721,7 +728,7 @@ function shDetalle(sh){
   const kv=(k,v)=>v?'<dt>'+k+'</dt><dd>'+v+'</dd>':'';
   let h=head(esc(o.producto))+'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div class="num" style="font-size:32px;font-weight:800">'+m(o.total)+'</div>'+tag+'</div>';
   if(o.demo)h+='<div class="banner"><span>Esto es un ejemplo. Registrá tu primera venta con el botón +.</span></div>';
-  h+='<div class="card"><dl class="kv" style="margin:0">'+kv('Cliente',esc(o.cliente||'Mostrador'))+kv('Fecha',fDia(o.ts)+' · '+fHora(o.ts))+kv('Medio de pago',MLABEL[o.medio])+kv('Envío',esc(o.envio))+kv('Cobrado',m(cob))+(pc?kv('Por cobrar','<b class="neg">'+m(pc)+'</b>'):'')+kv('Notas',esc(o.notas))+'</dl></div>';
+  h+='<div class="card"><dl class="kv" style="margin:0">'+kv('Cliente',esc(o.cliente||'Mostrador'))+kv('Fecha',fDia(o.ts)+' · '+fHora(o.ts))+(o.descMonto>0?kv('Subtotal',m(o.total+o.descMonto))+kv('Descuento','<b class="neg">'+pctStr(o.descPct)+'% · -'+m(o.descMonto)+'</b>'):'')+kv('Medio de pago',MLABEL[o.medio])+kv('Envío',esc(o.envio))+kv('Cobrado',m(cob))+(pc?kv('Por cobrar','<b class="neg">'+m(pc)+'</b>'):'')+kv('Notas',esc(o.notas))+'</dl></div>';
   h+='<div class="sec" style="margin-top:16px"><h2 style="font-size:16px">Productos ('+its.length+')</h2></div><div class="card"><ul class="hist its">'+its.map(it=>'<li class="itl"><span class="mid"><b>'+esc(itName(it))+'</b><small>'+qty(it.cantidad)+' × '+m(it.precio)+(it.categoria?' · '+esc(it.categoria):'')+(it.costo?' · costo '+m(it.costo):'')+'</small></span><b class="num">'+m(itTotal(it))+'</b></li>').join('')+'</ul></div>';
   if((o.cobros||[]).length&&valida(o))h+='<div class="sec" style="margin-top:16px"><h2 style="font-size:16px">Cobros</h2></div><div class="card"><ul class="hist">'+o.cobros.map(c=>'<li><b class="pos num">'+m(c.monto)+'</b> · '+MLABEL[c.medio]+' · '+fFull(c.ts)+'</li>').join('')+'</ul></div>';
   if(!valida(o)&&(o.cobros||[]).length)h+='<p class="hint" style="margin-top:10px">Los cobros de esta venta no suman a tus saldos porque está '+ESTADOS[o.estado].toLowerCase()+'.</p>';
@@ -756,6 +763,7 @@ function shVenta(sh){
   return head(old?'Editar venta':'Nueva venta')+'<div class="form">'+
   '<div id="items" class="form">'+itemsHtml(sh.items)+'</div>'+
   '<button type="button" class="btn ghost" data-a="add-item">+ Agregar otro producto</button>'+
+  '<div class="desc"><div class="desc-h"><b>Descuento</b><small>opcional · porcentaje manual</small></div><div class="two"><div class="field"><label for="v-dpct">Porcentaje (%)</label><input class="inp" id="v-dpct" data-in="calc" inputmode="decimal" placeholder="0" value="'+(old&&old.descPct?pctStr(old.descPct):'')+'"></div><div class="desc-r"><small>Se descuenta</small><b class="num" id="v-dm">- $ 0</b></div></div><div class="opts">'+[5,10,15,20].map(n=>'<button type="button" class="chip" data-a="dpct" data-v="'+n+'" aria-pressed="false">'+n+'%</button>').join('')+'</div></div>'+
   '<div class="field"><label for="v-cli">Cliente</label><input class="inp" id="v-cli" list="dl-cli" autocomplete="off" placeholder="Nombre (vacío = Mostrador)" value="'+esc(o.cliente)+'"></div>'+
   '<div class="field"><span class="lab">Envío (opcional)</span><div class="opts" role="group" data-grp="envio">'+ENVIOS.map(v=>'<button type="button" class="chip" data-a="tog" data-v="'+v+'" aria-pressed="'+(o.envio===v)+'">'+v+'</button>').join('')+'</div></div>'+
   '<div class="field"><span class="lab">Medio de pago</span>'+chipsOf('medio',medioOpts(medN(o.medio)),medN(o.medio))+'</div>'+
@@ -763,7 +771,7 @@ function shVenta(sh){
   '<div class="field"><label for="v-ts">Fecha y hora</label><input class="inp" type="datetime-local" id="v-ts" value="'+toInput(o.ts)+'"></div>'+
   '<div class="field"><label for="v-notas">Notas (opcional)</label><textarea class="inp" id="v-notas" rows="2" placeholder="Talle, color, entrega…">'+esc(o.notas)+'</textarea></div>'+
   dl('dl-cli',uniqC)+dl('dl-cat',uniqI('categoria'))+'</div>'+
-  '<div class="sh-foot"><div class="total"><span id="v-tl">Total</span><b class="num" id="v-total">$ 0</b></div><div class="err" id="v-err" role="alert"></div><button class="btn" data-a="save-venta">'+(old?'Guardar cambios':'Guardar venta')+'</button></div>'}
+  '<div class="sh-foot"><div class="itm-sub" id="v-subl" hidden></div><div class="total"><span id="v-tl">Total</span><b class="num" id="v-total">$ 0</b></div><div class="err" id="v-err" role="alert"></div><button class="btn" data-a="save-venta">'+(old?'Guardar cambios':'Guardar venta')+'</button></div>'}
 async function saveV(o,msg){const now=Date.now();o.upd=now;o.hist=(o.hist||[]).concat([{ts:now,m:msg}]).slice(-30);await put('ventas',o.id,o)}
 async function doSaveVenta(){
   const sh=S.sheet,old=sh.id?cloneV(findV(sh.id)):null,err=t=>{$('#v-err').textContent=t};
@@ -778,8 +786,10 @@ async function doSaveVenta(){
     its.push({producto,variante:r.variante||'',categoria:r.categoria.trim(),cantidad:cant,precio:toC(pr),costo:cs?toC(costo):0})}
   let ts=new Date(val('v-ts')).getTime();if(!isFinite(ts))ts=Date.now();
   const medio=grpVal('medio')||'efectivo',estado=grpVal('estado')||'cobrada';
-  const total=sum(its,itTotal),resumen=itName(its[0])+(its.length>1?' + '+(its.length-1)+' más':'');
-  const o=Object.assign({},old||{id:newId(),cobros:[],hist:[]},{ts,cliente:val('v-cli').trim(),items:its,producto:resumen,categoria:its[0].categoria,cantidad:sum(its,i=>i.cantidad),precio:its.length===1?its[0].precio:0,costo:its.length===1?its[0].costo:0,total,medio,estado,envio:grpVal('envio'),notas:val('v-notas').trim()});
+  const subtotal=sum(its,itTotal),pRaw=val('v-dpct').trim(),pct=pRaw?parseAR(pRaw):0;
+  if(isNaN(pct)||pct<0||pct>100)return err('El descuento tiene que ser un porcentaje entre 0 y 100.');
+  const descMonto=Math.round(subtotal*pct/100),total=subtotal-descMonto,resumen=itName(its[0])+(its.length>1?' + '+(its.length-1)+' más':'');
+  const o=Object.assign({},old||{id:newId(),cobros:[],hist:[]},{ts,cliente:val('v-cli').trim(),items:its,producto:resumen,categoria:its[0].categoria,cantidad:sum(its,i=>i.cantidad),precio:its.length===1?its[0].precio:0,costo:its.length===1?its[0].costo:0,total,descPct:pct,descMonto,medio,estado,envio:grpVal('envio'),notas:val('v-notas').trim()});
   const oc=(old&&old.cobros)||[];
   if(estado==='cobrada'){if(old&&old.estado==='cobrada'&&oc.length===1)o.cobros=[{monto:total,medio,ts:oc[0].ts}];else if(old&&old.estado==='pendiente'){const r=total-sum(oc,c=>c.monto);o.cobros=r>0?oc.concat([{monto:r,medio,ts:Date.now()}]):oc}else o.cobros=[{monto:total,medio,ts:Math.min(ts,Date.now())}]}
   else if(estado==='pendiente'){o.cobros=(old&&(old.estado==='pendiente'||old.estado==='cancelada'))?oc:[];if(sum(o.cobros,c=>c.monto)>=total&&o.cobros.length)o.estado='cobrada'}
@@ -787,7 +797,7 @@ async function doSaveVenta(){
   let msg='Venta creada';
   if(old){const ch=[],key=a=>JSON.stringify(a.map(i=>[i.producto,i.variante||'',i.cantidad,i.precio]));
     if(old.total!==o.total)ch.push('total '+m(old.total)+' → '+m(o.total));if(old.estado!==o.estado)ch.push('estado '+ESTADOS[old.estado]+' → '+ESTADOS[o.estado]);
-    if(key(itemsOf(old))!==key(its))ch.push('productos');if((old.cliente||'')!==o.cliente)ch.push('cliente');if(old.medio!==o.medio)ch.push('medio de pago');if((old.envio||'')!==o.envio)ch.push('envío');if(old.ts!==o.ts)ch.push('fecha');
+    if((old.descPct||0)!==pct)ch.push('descuento');if(key(itemsOf(old))!==key(its))ch.push('productos');if((old.cliente||'')!==o.cliente)ch.push('cliente');if(old.medio!==o.medio)ch.push('medio de pago');if((old.envio||'')!==o.envio)ch.push('envío');if(old.ts!==o.ts)ch.push('fecha');
     msg='Editada'+(ch.length?': '+ch.join(', '):'')}
   try{await saveV(o,msg);if(old&&(old.total!==o.total||old.estado!==o.estado))await log('Venta "'+o.producto+'" '+msg.toLowerCase());
     closeSheet();toast(old?'Cambios guardados':'Venta guardada');
@@ -885,8 +895,8 @@ async function saveFile(filename,data){
     a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);toast('Archivo listo')}
   catch(e){toast('No se pudo guardar el archivo.')}}
 const stamp=()=>toDateInput(Date.now());
-function ventasCsv(list){const rows=[['N° venta','Fecha','Hora','Cliente','Producto','Variante','Categoría','Cantidad','Precio unitario','Subtotal','Total venta','Cobrado','Por cobrar','Medio de pago','Envío','Estado','Costo unitario','Notas']];
-  list.slice().sort((a,b)=>a.ts-b.ts).forEach((o,k)=>itemsOf(o).forEach((it,j)=>rows.push([k+1,fDate(o.ts),fHora(o.ts),o.cliente||'Mostrador',it.producto,it.variante||'',it.categoria||'',String(it.cantidad).replace('.',','),csvNum(it.precio),csvNum(itTotal(it)),j===0?csvNum(o.total):'',j===0?csvNum(cobrado(o)):'',j===0?csvNum(porCobrarDe(o)):'',MLABEL[o.medio],o.envio||'',ESTADOS[o.estado],it.costo?csvNum(it.costo):'',j===0?(o.notas||''):''])));
+function ventasCsv(list){const rows=[['N° venta','Fecha','Hora','Cliente','Producto','Variante','Categoría','Cantidad','Precio unitario','Subtotal','Total venta','Cobrado','Por cobrar','Medio de pago','Envío','Estado','Costo unitario','Notas','Descuento (%)','Descuento ($)']];
+  list.slice().sort((a,b)=>a.ts-b.ts).forEach((o,k)=>itemsOf(o).forEach((it,j)=>rows.push([k+1,fDate(o.ts),fHora(o.ts),o.cliente||'Mostrador',it.producto,it.variante||'',it.categoria||'',String(it.cantidad).replace('.',','),csvNum(it.precio),csvNum(itTotal(it)),j===0?csvNum(o.total):'',j===0?csvNum(cobrado(o)):'',j===0?csvNum(porCobrarDe(o)):'',MLABEL[o.medio],o.envio||'',ESTADOS[o.estado],it.costo?csvNum(it.costo):'',j===0?(o.notas||''):'',j===0&&o.descPct?pctStr(o.descPct):'',j===0&&o.descMonto?csvNum(o.descMonto):''])));
   return csv(rows)}
 function realData(){return S.ventas.length||S.gastos.length||S.transf.length||Object.keys(S.config).length}
 async function pool(items,fn,n){let i=0;await Promise.all(Array.from({length:n},async()=>{while(i<items.length){await fn(items[i++])}}))}
@@ -909,13 +919,14 @@ document.addEventListener('click',async ev=>{
   case 'nueva':openSheet({type:'venta'});break;
   case 'hidedemo':S.demoHidden=true;try{localStorage.setItem('argyr:demoHidden','1')}catch(e){}render();break;
   case 'showdemo':S.demoHidden=false;try{localStorage.removeItem('argyr:demoHidden')}catch(e){}S.tab='inicio';render();break;
-  case 'goventas':S.tab='ventas';S.f.per=el.dataset.per;S.f.estado=el.dataset.estado||'todas';S.f.desde=S.f.hasta='';S.f.q='';Object.assign(S.f,{medio:'',cat:'',producto:'',variante:'',cliente:'',envio:'',mmin:'',mmax:''});window.scrollTo(0,0);render();break;
+  case 'goventas':S.tab='ventas';S.f.per=el.dataset.per;S.f.estado=el.dataset.estado||'todas';S.f.desde=S.f.hasta='';S.f.q='';Object.assign(S.f,{medio:'',cat:'',producto:'',variante:'',cliente:'',envio:'',desc:'',mmin:'',mmax:''});window.scrollTo(0,0);render();break;
   case 'per':S.f.per=v;S.f.desde=S.f.hasta='';render();break;
   case 'vmetric':S.vmetric=v;render();break;
   case 'estado':S.f.estado=v;render();break;
   case 'filtros':S.f.open=!S.f.open;render();break;
-  case 'limpiar':Object.assign(S.f,{estado:'todas',per:'mes',q:'',medio:'',cat:'',producto:'',variante:'',cliente:'',envio:'',mmin:'',mmax:'',desde:'',hasta:''});render();break;
+  case 'limpiar':Object.assign(S.f,{estado:'todas',per:'mes',q:'',medio:'',cat:'',producto:'',variante:'',cliente:'',envio:'',mmin:'',mmax:'',desc:'',desde:'',hasta:''});render();break;
   case 'dfilt':S.dfilt=v;render();break;
+  case 'dpct':{const i=$('#v-dpct');if(i){i.value=(parseAR(i.value)===+v)?'':v;calcTotal()}break}
   case 'hday':S.hday=v;render();break;
   case 'dtab':S.dtab=v;render();break;
   case 'hper':S.hp=v;render();break;
@@ -947,7 +958,7 @@ document.addEventListener('click',async ev=>{
   case 'span':S.span=v;S.sel=-1;render();break;
   case 'cliall':S.cliAll=(v==='todo');render();break;
   case 'cliby':S.cliBy=v;render();break;
-  case 'cli':S.tab='ventas';S.f.per='todo';S.f.estado='todas';S.f.desde=S.f.hasta='';Object.assign(S.f,{medio:'',cat:'',producto:'',variante:'',envio:'',mmin:'',mmax:'',q:'',cliente:v});window.scrollTo(0,0);render();break;
+  case 'cli':S.tab='ventas';S.f.per='todo';S.f.estado='todas';S.f.desde=S.f.hasta='';Object.assign(S.f,{medio:'',cat:'',producto:'',variante:'',envio:'',desc:'',mmin:'',mmax:'',q:'',cliente:v});window.scrollTo(0,0);render();break;
   case 'bar':S.sel=+el.dataset.i;render();break;
   case 'venta':openSheet({type:'detalle',id});break;
   case 'mov':

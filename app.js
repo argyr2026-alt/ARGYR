@@ -117,6 +117,11 @@ const MENU=[
 const VARIANTES=['Simple','Doble','Único'];
 const norm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
 const itName=it=>(it.producto||'')+(it.variante?' · '+it.variante:'');
+/* unidades reales: un "Combo para 2P" son 2 unidades por cada uno vendido */
+const unitMult=it=>{const n=norm(it.producto);if(!/\bcombo/.test(n))return 1;
+  const r=n.match(/(\d+)\s*(?:p\b|pers|personas?|hamburguesas?|burgers?|burgas?|unidades|u\b)/)||n.match(/(?:para|x|por|de)\s*(\d+)/)||n.match(/\bcombo\s*(\d+)/);
+  const k=r?parseInt(r[1],10):1;return k>=1&&k<=50?k:1};
+const itUnits=it=>it.cantidad*unitMult(it);
 const itTotal=it=>Math.round(it.cantidad*it.precio);
 const descF=o=>o.descMonto>0?o.total/(o.total+o.descMonto):1;
 const pctStr=n=>String(n).replace('.',',');
@@ -177,9 +182,10 @@ function stats(d,r){const inR=t=>t>=r[0]&&t<r[1];
   let costo=0,sinCosto=0;vs.forEach(o=>{let falta=false;itemsOf(o).forEach(it=>{if(it.costo>0)costo+=Math.round(it.costo*it.cantidad);else falta=true});if(falta)sinCosto++});
   const gastos=sum(d.gastos.filter(g=>g.tipo==='gasto'&&inR(g.ts)),g=>g.monto),haberes=sum(d.gastos.filter(g=>g.tipo==='haberes'&&inR(g.ts)),g=>g.monto);
   const retiros=sum(d.gastos.filter(g=>g.tipo==='retiro'&&inR(g.ts)),g=>g.monto);
-  return {vs,pend,vendido,cob,porCobrar,ops:vs.length,ticket:vs.length?Math.round(vendido/vs.length):0,costo,sinCosto,gastos,haberes,egresos:gastos+haberes,retiros,ganancia:vendido-costo-gastos-haberes}}
+  const unidades=sum(vs,o=>sum(itemsOf(o),itUnits));
+  return {vs,pend,unidades,vendido,cob,porCobrar,ops:vs.length,ticket:vs.length?Math.round(vendido/vs.length):0,costo,sinCosto,gastos,haberes,egresos:gastos+haberes,retiros,ganancia:vendido-costo-gastos-haberes}}
 function groupBy(vs,key){const mp=new Map();vs.forEach(o=>{const fd=descF(o);itemsOf(o).forEach(it=>{const raw=(it[key]||'').trim();if(!raw)return;const k=raw.toLowerCase();
-  const e=mp.get(k)||{n:raw,total:0,u:0};e.total+=Math.round(itTotal(it)*fd);e.u+=it.cantidad;mp.set(k,e)})});
+  const e=mp.get(k)||{n:raw,total:0,u:0,q:0};e.total+=Math.round(itTotal(it)*fd);e.u+=itUnits(it);e.q+=it.cantidad;mp.set(k,e)})});
   return [...mp.values()].sort((a,b)=>b.total-a.total)}
 
 /* ---------- vistas ---------- */
@@ -237,7 +243,7 @@ function ventasBase(d){const f=S.f;let from=0,to=Infinity;
     (!f.cliente||norm(o.cliente||'Mostrador')===nc)&&
     (!f.envio||(f.envio==='__none'?!o.envio:o.envio===f.envio))&&(!f.desc||(f.desc==='con'?o.descMonto>0:!(o.descMonto>0)))&&
     (isNaN(mn)||o.total>=toC(mn))&&(isNaN(mx)||o.total<=toC(mx))&&
-    (!q||[o.cliente,o.notas,o.envio].concat(itemsOf(o).map(i=>itName(i)+' '+(i.categoria||''))).join(' ').toLowerCase().includes(q))).sort((a,b)=>b.ts-a.ts)}
+    (!q||[o.cliente,o.notas,o.envio].concat(itemsOf(o).map(i=>itName(i)+' '+(i.categoria||'')+' '+(i.agregados||''))).join(' ').toLowerCase().includes(q))).sort((a,b)=>b.ts-a.ts)}
 function ventaRow(o){
   const par=o.estado==='pendiente'&&cobrado(o)>0;
   const tag=par?'<span class="tag parcial">Parcial</span>':'<span class="tag '+o.estado+'">'+ESTADOS[o.estado]+'</span>';
@@ -340,7 +346,7 @@ function vStats(d){
   const r=rng(S.sp),pr=rng(S.sp,true),s=stats(d,r),p=stats(d,pr),lab={hoy:'vs ayer',semana:'vs semana anterior',mes:'vs mes anterior'}[S.sp];
   const med={};d.ventas.forEach(o=>{if(!valida(o))return;(o.cobros||[]).forEach(c=>{if(c.ts>=r[0]&&c.ts<r[1])med[c.medio]=(med[c.medio]||0)+c.monto})});
   const med2={};for(const k in med)med2[medN(k)]=(med2[medN(k)]||0)+med[k];const mrows=Object.keys(med2).map(k=>({n:MLABEL[k],total:med2[k]})).sort((a,b)=>b.total-a.total);
-  const prods=groupBy(s.vs,'producto').slice(0,5),cats=groupBy(s.vs,'categoria').slice(0,5);
+  const cats=groupBy(s.vs,'categoria').slice(0,5);
   const bk=buckets(d),sel=S.sel<0?bk.length-1:S.sel,tot=sum(bk,b=>b.v);
   const ev={ventas:'Ventas',gastos:'Gastos',haberes:'Haberes',ganancia:'Ganancia estimada'}[S.evo];
   const ind=(k,v,sub,extra,cls)=>'<div class="card'+(cls?' '+cls:'')+'"><div class="k">'+k+'</div><div class="v num">'+v+'</div>'+(extra||'')+'<div class="s">'+sub+'</div></div>';
@@ -351,11 +357,11 @@ function vStats(d){
   ind('Gastos',m(s.gastos),'Sin haberes · fijos '+m(gStats(d,r).fijo),'','gas')+ind('Haberes',m(s.haberes),'Pagos de haberes del período','','hab')+
   ind('Total egresos',m(s.egresos),'Gastos + haberes'+(s.retiros?' · sin retiros personales ('+m(s.retiros)+')':''))+
   ind('Ganancia estimada',m(s.ganancia),s.sinCosto?'Faltan costos en '+plural(s.sinCosto,'venta','ventas')+': puede estar sobreestimada':'Ventas menos costos, gastos y haberes')+
-  ind('Operaciones',s.ops,'Ventas cobradas del período')+ind('Total pedidos',d.ventas.filter(o=>o.ts>=r[0]&&o.ts<r[1]).length,'Con cancelados y devueltos')+ind('Ticket promedio',m(s.ticket),'Promedio por operación')+'</div>'+
+  ind('Operaciones',s.ops,'Ventas cobradas del período')+ind('Unidades vendidas',qty(s.unidades),'Un combo cuenta por sus personas: “Combo para 4P” = 4 unidades')+ind('Unidades por venta',s.ops?qty(Math.round(s.unidades/s.ops*10)/10):'—','Promedio por operación')+ind('Total pedidos',d.ventas.filter(o=>o.ts>=r[0]&&o.ts<r[1]).length,'Con cancelados y devueltos')+ind('Ticket promedio',m(s.ticket),'Promedio por operación')+'</div>'+
   '<div class="sec"><h2>Cobrado por medio de pago</h2></div><div class="card">'+bars(mrows,Math.max(1,...mrows.map(x=>x.total)),'Todavía no cobraste nada en este período.')+'</div>'+
-  '<div class="sec"><h2>Más vendidos</h2></div><div class="card"><div class="lab" style="margin-bottom:8px">Productos</div>'+bars(prods,Math.max(1,...prods.map(x=>x.total)),'Sin ventas en este período.')+
+  '<div class="sec"><h2>Más vendidos</h2></div><div class="card"><div class="lab" style="margin-bottom:8px">Productos</div>'+prodList(s.vs)+
   (cats.length?'<div class="lab" style="margin:14px 0 8px">Categorías</div>'+bars(cats,Math.max(1,...cats.map(x=>x.total)),''):'')+'</div>'+
-  clientesHtml(d,r)+statsExtra(d,r,pr,s)+'<div class="sec"><h2>Evolución</h2></div><div class="card"><div class="seg light" role="group" aria-label="Serie">'+[['ventas','Ventas'],['gastos','Gastos'],['haberes','Haberes'],['ganancia','Ganancia']].map(x=>'<button data-a="evo" data-v="'+x[0]+'" aria-pressed="'+(S.evo===x[0])+'">'+x[1]+'</button>').join('')+'</div>'+
+  agregadosHtml(s.vs)+clientesHtml(d,r)+statsExtra(d,r,pr,s)+'<div class="sec"><h2>Evolución</h2></div><div class="card"><div class="seg light" role="group" aria-label="Serie">'+[['ventas','Ventas'],['gastos','Gastos'],['haberes','Haberes'],['ganancia','Ganancia']].map(x=>'<button data-a="evo" data-v="'+x[0]+'" aria-pressed="'+(S.evo===x[0])+'">'+x[1]+'</button>').join('')+'</div>'+
   '<div class="chips" style="margin-top:10px">'+[['dias','Últimos 14 días'],['meses','Últimos 6 meses']].map(x=>'<button class="chip" data-a="span" data-v="'+x[0]+'" aria-pressed="'+(S.span===x[0])+'">'+x[1]+'</button>').join('')+'</div>'+
   '<div class="chart-wrap">'+chart(bk)+'</div><div class="cap"><b>'+esc(bk[sel].full)+'</b> · '+ev+' '+m(bk[sel].v)+' &nbsp;|&nbsp; Total del gráfico '+m(tot)+'</div></div>'}
 function vAjustes(d){
@@ -372,7 +378,7 @@ function vAjustes(d){
   '<p class="hint" style="margin-top:18px">'+(S.usingDb?'Tus datos se guardan en Supabase y se actualizan en todos tus dispositivos.':'Tus datos se guardan solo en este navegador. Descargá una copia de seguridad de vez en cuando.')+'</p>'}
 
 /* ---------- módulo de gastos y pestañas de Dinero ---------- */
-S.dtab='ingresos';S.hp='mes';S.hday='hoy';
+S.prodBy='monto';S.prodAll=false;S.dtab='ingresos';S.hp='mes';S.hday='hoy';
 S.g={per:'mes',desde:'',hasta:'',v:'resumen',q:'',tipo:'',medio:'',ord:'fecha-d',prod:'',cmp:false,sel:-1};
 const CLASES={fijo:'Fijo',variable:'Variable'};
 const claseDe=g=>g.clase==='fijo'?'fijo':'variable';
@@ -666,6 +672,18 @@ function statsExtra(d,r,pr,s){
   h+='<div class="sec"><h2>Pedidos por estado</h2></div><div class="card">'+(es.length?ubars(es,x=>String(x),''):'<p class="hint">Sin pedidos en este período.</p>')+'</div>';
   return h}
 
+/* ---------- Estadísticas: productos vendidos y agregados ---------- */
+function prodList(vs){
+  const A=groupBy(vs,'producto');if(!A.length)return '<p class="hint">Sin ventas en este período.</p>';
+  const by=S.prodBy==='unidades';A.sort(by?(a,b)=>b.u-a.u||b.total-a.total:(a,b)=>b.total-a.total);
+  const L=S.prodAll?A:A.slice(0,5),mx=Math.max(1,...L.map(x=>by?x.u:x.total));
+  return gSeg('prodby',[['monto','Por monto'],['unidades','Por unidades']],S.prodBy)+'<div class="bars" style="margin-top:12px">'+L.map((x,i)=>'<div class="br"><span class="nm">'+(i+1)+'. '+esc(x.n)+'</span><b class="num">'+m(x.total)+'</b><small class="un"><b>'+qty(x.q)+'</b> '+(x.q===1?'vendido':'vendidos')+(x.u!==x.q?' · equivale a <b>'+qty(x.u)+'</b> unidades':'')+'</small><div class="track"><div class="fill" style="width:'+Math.max(3,Math.round((by?x.u:x.total)/mx*100))+'%"></div></div></div>').join('')+'</div>'+
+    (A.length>5?'<button class="btn ghost" style="margin-top:4px" data-a="prodall">'+(S.prodAll?'Ver solo los 5 primeros':'Ver lista completa ('+A.length+' productos)')+'</button>':'')}
+function agregadosHtml(vs){
+  const mp=new Map();vs.forEach(o=>itemsOf(o).forEach(it=>{if(!it.agregados)return;String(it.agregados).split(/[,;+\n]|\sy\s/i).map(x=>x.trim()).filter(Boolean).forEach(t=>{const k=norm(t),e=mp.get(k)||{n:t,v:0};e.v+=it.cantidad;mp.set(k,e)})}));
+  const L=[...mp.values()].sort((a,b)=>b.v-a.v).slice(0,8);
+  return '<div class="sec"><h2>Agregados más pedidos</h2></div><div class="card">'+(L.length?ubars(L,x=>qty(x),''):'<p class="hint">Todavía no registraste agregados. Podés escribirlos en cada producto al cargar una venta (medallón extra, huevo, jamón…).</p>')+'</div>'}
+
 /* ---------- hojas (formularios y detalle) ---------- */
 const cloneV=o=>JSON.parse(JSON.stringify(o));
 const findV=id=>D().ventas.find(o=>o.id===id);
@@ -677,12 +695,12 @@ function closeSheet(){S.sheet=null;$('#layer').innerHTML='';lockScroll(false)}
 const head=(t)=>'<div class="sh-top"><h2>'+t+'</h2><button class="icon-btn" data-a="close" aria-label="Cerrar">'+ico('x',20)+'</button></div>';
 const chipsOf=(grp,opts,cur)=>'<div class="opts" role="group" data-grp="'+grp+'">'+opts.map(o=>'<button type="button" class="chip" data-a="pick" data-v="'+o[0]+'" aria-pressed="'+(o[0]===cur)+'">'+o[1]+'</button>').join('')+'</div>';
 const grpVal=g=>{const e=document.querySelector('[data-grp="'+g+'"] [aria-pressed="true"]');return e?e.dataset.v:''};
-const blankItem=()=>({producto:'',variante:'',cantidad:'1',precio:'',costo:'',categoria:''});
+const blankItem=()=>({producto:'',variante:'',agregados:'',cantidad:'1',precio:'',costo:'',categoria:''});
 function openSheet(sh){
   const f={detalle:shDetalle,venta:shVenta,cobro:shCobro,gasto:shGasto,transf:shTransf,saldos:shSaldos,confirm:shConfirm,gastoM:shGastoM,gastoDet:shGastoDet,merge:shMerge,pres:shPres}[sh.type];
   const prev=document.querySelector('.sheet'),top=prev?prev.scrollTop:0;
   if(sh.type==='venta'&&!sh.items){const old=sh.id?findV(sh.id):null;
-    sh.items=old?itemsOf(old).map(i=>({producto:i.producto||'',variante:i.variante||'',cantidad:qty(i.cantidad),precio:inputNum(i.precio),costo:inputNum(i.costo),categoria:i.categoria||''})):[blankItem()]}
+    sh.items=old?itemsOf(old).map(i=>({producto:i.producto||'',variante:i.variante||'',cantidad:qty(i.cantidad),precio:inputNum(i.precio),costo:inputNum(i.costo),categoria:i.categoria||'',agregados:i.agregados||''})):[blankItem()]}
   if(sh.type==='gastoM'&&!sh.items){const og=sh.id?D().gastos.find(x=>x.id===sh.id):null;sh.items=og?gItems(og).map(i=>({nombre:i.nombre,cantidad:numStr(i.cantidad),unidad:i.unidad||'',precio:inputNum(i.precio)})):[]}
   S.sheet=sh;
   const html=f(sh);if(html==null){closeSheet();return}
@@ -691,7 +709,7 @@ function openSheet(sh){
   if(prev&&sh.type==='detalle')document.querySelector('.sheet').scrollTop=top;
   if(sh.type==='gastoM')calcG();
   if(sh.type==='venta'){calcTotal();if(!sh.id&&window.matchMedia&&matchMedia('(hover:hover)').matches)setTimeout(()=>{const e=document.querySelector('.i-prod');if(e)e.focus({preventScroll:true})},60)}}
-function readItems(){return [...document.querySelectorAll('#items .itm')].map(r=>{const v=r.querySelector('.vars [aria-pressed="true"]');return {producto:r.querySelector('.i-prod').value,variante:v?v.dataset.v:'',cantidad:r.querySelector('.i-cant').value,precio:r.querySelector('.i-precio').value,costo:r.querySelector('.i-costo').value,categoria:r.querySelector('.i-cat').value}})}
+function readItems(){return [...document.querySelectorAll('#items .itm')].map(r=>{const v=r.querySelector('.vars [aria-pressed="true"]');return {producto:r.querySelector('.i-prod').value,variante:v?v.dataset.v:'',cantidad:r.querySelector('.i-cant').value,precio:r.querySelector('.i-precio').value,costo:r.querySelector('.i-costo').value,categoria:r.querySelector('.i-cat').value,agregados:r.querySelector('.i-agr').value}})}
 function calcTotal(){let t=0;const rows=document.querySelectorAll('#items .itm');
   rows.forEach(r=>{const c=parseAR(r.querySelector('.i-cant').value),p=parseAR(r.querySelector('.i-precio').value);const s=(isFinite(c)&&isFinite(p))?Math.round(c*toC(p)):0;t+=s;const e=r.querySelector('.i-sub');if(e)e.textContent=m(s)});
   const pi=$('#v-dpct'),pv=pi?parseAR(pi.value):NaN,pct=(isFinite(pv)&&pv>0)?Math.min(100,pv):0,dm=Math.round(t*pct/100);
@@ -701,7 +719,7 @@ function calcTotal(){let t=0;const rows=document.querySelectorAll('#items .itm')
   document.querySelectorAll('[data-a=dpct]').forEach(b=>b.setAttribute('aria-pressed',String(!!pi&&pv===+b.dataset.v)));const tl=$('#v-tl');if(tl)tl.textContent=rows.length>1?'Total · '+rows.length+' productos':'Total'}
 const rowVar=row=>{const v=row.querySelector('.vars [aria-pressed="true"]');return v?v.dataset.v:''};
 function lookupItem(name,vari){const q=norm(name);if(!q)return null;let p=null;
-  S.ventas.slice().sort((a,b)=>b.ts-a.ts).some(o=>itemsOf(o).some(it=>{if(norm(it.producto)===q&&(it.variante||'')===(vari||'')&&it.precio>0){p=it;return true}return false}));return p}
+  S.ventas.slice().sort((a,b)=>b.ts-a.ts).some(o=>itemsOf(o).some(it=>{if(norm(it.producto)===q&&(it.variante||'')===(vari||'')&&it.precio>0&&!it.agregados){p=it;return true}return false}));return p}
 function fillRow(row){const pr=row.querySelector('.i-precio');if(pr.value&&pr.dataset.auto!=='1')return;
   const p=lookupItem(row.querySelector('.i-prod').value,rowVar(row));if(!p)return;
   pr.value=inputNum(p.precio);pr.dataset.auto='1';const c=row.querySelector('.i-costo'),k=row.querySelector('.i-cat');
@@ -729,7 +747,7 @@ function shDetalle(sh){
   let h=head(esc(o.producto))+'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div class="num" style="font-size:32px;font-weight:800">'+m(o.total)+'</div>'+tag+'</div>';
   if(o.demo)h+='<div class="banner"><span>Esto es un ejemplo. Registrá tu primera venta con el botón +.</span></div>';
   h+='<div class="card"><dl class="kv" style="margin:0">'+kv('Cliente',esc(o.cliente||'Mostrador'))+kv('Fecha',fDia(o.ts)+' · '+fHora(o.ts))+(o.descMonto>0?kv('Subtotal',m(o.total+o.descMonto))+kv('Descuento','<b class="neg">'+pctStr(o.descPct)+'% · -'+m(o.descMonto)+'</b>'):'')+kv('Medio de pago',MLABEL[o.medio])+kv('Envío',esc(o.envio))+kv('Cobrado',m(cob))+(pc?kv('Por cobrar','<b class="neg">'+m(pc)+'</b>'):'')+kv('Notas',esc(o.notas))+'</dl></div>';
-  h+='<div class="sec" style="margin-top:16px"><h2 style="font-size:16px">Productos ('+its.length+')</h2></div><div class="card"><ul class="hist its">'+its.map(it=>'<li class="itl"><span class="mid"><b>'+esc(itName(it))+'</b><small>'+qty(it.cantidad)+' × '+m(it.precio)+(it.categoria?' · '+esc(it.categoria):'')+(it.costo?' · costo '+m(it.costo):'')+'</small></span><b class="num">'+m(itTotal(it))+'</b></li>').join('')+'</ul></div>';
+  h+='<div class="sec" style="margin-top:16px"><h2 style="font-size:16px">Productos ('+its.length+')</h2></div><div class="card"><ul class="hist its">'+its.map(it=>'<li class="itl"><span class="mid"><b>'+esc(itName(it))+'</b>'+(it.agregados?'<small style="color:var(--accent);font-weight:600">+ '+esc(it.agregados)+'</small>':'')+'<small>'+qty(it.cantidad)+' × '+m(it.precio)+(it.categoria?' · '+esc(it.categoria):'')+(it.costo?' · costo '+m(it.costo):'')+'</small></span><b class="num">'+m(itTotal(it))+'</b></li>').join('')+'</ul></div>';
   if((o.cobros||[]).length&&valida(o))h+='<div class="sec" style="margin-top:16px"><h2 style="font-size:16px">Cobros</h2></div><div class="card"><ul class="hist">'+o.cobros.map(c=>'<li><b class="pos num">'+m(c.monto)+'</b> · '+MLABEL[c.medio]+' · '+fFull(c.ts)+'</li>').join('')+'</ul></div>';
   if(!valida(o)&&(o.cobros||[]).length)h+='<p class="hint" style="margin-top:10px">Los cobros de esta venta no suman a tus saldos porque está '+ESTADOS[o.estado].toLowerCase()+'.</p>';
   if((o.hist||[]).length)h+='<div class="sec" style="margin-top:16px"><h2 style="font-size:16px">Historial</h2></div><div class="card"><ul class="hist">'+o.hist.slice().reverse().map(x=>'<li><b style="color:var(--ink)">'+fFull(x.ts)+'</b> · '+esc(x.m)+'</li>').join('')+'</ul></div>';
@@ -747,6 +765,7 @@ function itemHtml(it,i,n){
   (n>1?'<div class="itm-h"><b>Producto '+(i+1)+'</b><button type="button" class="link" data-a="rm-item" data-i="'+i+'">Quitar</button></div>':'')+
   '<div class="field"><label for="'+id('ip')+'">Producto</label><div class="cbw"><input class="inp i-prod" id="'+id('ip')+'" autocomplete="off" autocapitalize="sentences" role="combobox" aria-autocomplete="list" placeholder="Elegí de tu carta o escribí otro" value="'+esc(it.producto)+'"><div class="cb" role="listbox" hidden></div></div></div>'+
   '<div class="field"><span class="lab">Tamaño</span><div class="opts vars" role="group" aria-label="Tamaño">'+VARIANTES.map(v=>'<button type="button" class="chip" data-a="var" data-v="'+v+'" aria-pressed="'+(it.variante===v)+'">'+v+'</button>').join('')+'</div></div>'+
+  '<div class="field"><label for="'+id('ia')+'">Agregados (opcional)</label><input class="inp i-agr" id="'+id('ia')+'" list="dl-agr" autocomplete="off" autocapitalize="sentences" placeholder="Ej: medallón extra, huevo, jamón" value="'+esc(it.agregados||'')+'"></div>'+
   '<div class="two"><div class="field"><label for="'+id('ic')+'">Cantidad</label><div class="stepper"><button type="button" data-a="step" data-d="-1" aria-label="Menos">−</button><input class="i-cant" id="'+id('ic')+'" data-in="calc" inputmode="decimal" value="'+esc(it.cantidad)+'"><button type="button" data-a="step" data-d="1" aria-label="Más">+</button></div></div>'+
   '<div class="field"><label for="'+id('ipr')+'">Precio unitario ($)</label><input class="inp i-precio" id="'+id('ipr')+'" data-in="calc" inputmode="decimal" placeholder="0" value="'+esc(it.precio)+'"></div></div>'+
   (n>1?'<div class="itm-sub"><span>Subtotal</span><b class="num i-sub">$ 0</b></div>':'')+
@@ -770,7 +789,7 @@ function shVenta(sh){
   '<div class="field"><span class="lab">Estado</span>'+chipsOf('estado',estados,o.estado)+'</div>'+
   '<div class="field"><label for="v-ts">Fecha y hora</label><input class="inp" type="datetime-local" id="v-ts" value="'+toInput(o.ts)+'"></div>'+
   '<div class="field"><label for="v-notas">Notas (opcional)</label><textarea class="inp" id="v-notas" rows="2" placeholder="Talle, color, entrega…">'+esc(o.notas)+'</textarea></div>'+
-  dl('dl-cli',uniqC)+dl('dl-cat',uniqI('categoria'))+'</div>'+
+  dl('dl-agr',[...new Set(V.flatMap(o=>itemsOf(o).map(i=>(i.agregados||'').trim())).filter(Boolean))])+dl('dl-cli',uniqC)+dl('dl-cat',uniqI('categoria'))+'</div>'+
   '<div class="sh-foot"><div class="itm-sub" id="v-subl" hidden></div><div class="total"><span id="v-tl">Total</span><b class="num" id="v-total">$ 0</b></div><div class="err" id="v-err" role="alert"></div><button class="btn" data-a="save-venta">'+(old?'Guardar cambios':'Guardar venta')+'</button></div>'}
 async function saveV(o,msg){const now=Date.now();o.upd=now;o.hist=(o.hist||[]).concat([{ts:now,m:msg}]).slice(-30);await put('ventas',o.id,o)}
 async function doSaveVenta(){
@@ -783,7 +802,7 @@ async function doSaveVenta(){
     if(!(cant>0))return E('la cantidad tiene que ser mayor a 0.');
     if(!(pr>=0)||isNaN(pr))return E('ingresá el precio unitario.');
     if(cs&&!(costo>=0))return E('el costo no es válido.');
-    its.push({producto,variante:r.variante||'',categoria:r.categoria.trim(),cantidad:cant,precio:toC(pr),costo:cs?toC(costo):0})}
+    its.push({producto,variante:r.variante||'',agregados:(r.agregados||'').trim(),categoria:r.categoria.trim(),cantidad:cant,precio:toC(pr),costo:cs?toC(costo):0})}
   let ts=new Date(val('v-ts')).getTime();if(!isFinite(ts))ts=Date.now();
   const medio=grpVal('medio')||'efectivo',estado=grpVal('estado')||'cobrada';
   const subtotal=sum(its,itTotal),pRaw=val('v-dpct').trim(),pct=pRaw?parseAR(pRaw):0;
@@ -895,8 +914,8 @@ async function saveFile(filename,data){
     a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);toast('Archivo listo')}
   catch(e){toast('No se pudo guardar el archivo.')}}
 const stamp=()=>toDateInput(Date.now());
-function ventasCsv(list){const rows=[['N° venta','Fecha','Hora','Cliente','Producto','Variante','Categoría','Cantidad','Precio unitario','Subtotal','Total venta','Cobrado','Por cobrar','Medio de pago','Envío','Estado','Costo unitario','Notas','Descuento (%)','Descuento ($)']];
-  list.slice().sort((a,b)=>a.ts-b.ts).forEach((o,k)=>itemsOf(o).forEach((it,j)=>rows.push([k+1,fDate(o.ts),fHora(o.ts),o.cliente||'Mostrador',it.producto,it.variante||'',it.categoria||'',String(it.cantidad).replace('.',','),csvNum(it.precio),csvNum(itTotal(it)),j===0?csvNum(o.total):'',j===0?csvNum(cobrado(o)):'',j===0?csvNum(porCobrarDe(o)):'',MLABEL[o.medio],o.envio||'',ESTADOS[o.estado],it.costo?csvNum(it.costo):'',j===0?(o.notas||''):'',j===0&&o.descPct?pctStr(o.descPct):'',j===0&&o.descMonto?csvNum(o.descMonto):''])));
+function ventasCsv(list){const rows=[['N° venta','Fecha','Hora','Cliente','Producto','Variante','Agregados','Categoría','Cantidad','Precio unitario','Subtotal','Total venta','Cobrado','Por cobrar','Medio de pago','Envío','Estado','Costo unitario','Notas','Descuento (%)','Descuento ($)']];
+  list.slice().sort((a,b)=>a.ts-b.ts).forEach((o,k)=>itemsOf(o).forEach((it,j)=>rows.push([k+1,fDate(o.ts),fHora(o.ts),o.cliente||'Mostrador',it.producto,it.variante||'',it.agregados||'',it.categoria||'',String(it.cantidad).replace('.',','),csvNum(it.precio),csvNum(itTotal(it)),j===0?csvNum(o.total):'',j===0?csvNum(cobrado(o)):'',j===0?csvNum(porCobrarDe(o)):'',MLABEL[o.medio],o.envio||'',ESTADOS[o.estado],it.costo?csvNum(it.costo):'',j===0?(o.notas||''):'',j===0&&o.descPct?pctStr(o.descPct):'',j===0&&o.descMonto?csvNum(o.descMonto):''])));
   return csv(rows)}
 function realData(){return S.ventas.length||S.gastos.length||S.transf.length||Object.keys(S.config).length}
 async function pool(items,fn,n){let i=0;await Promise.all(Array.from({length:n},async()=>{while(i<items.length){await fn(items[i++])}}))}
@@ -926,6 +945,8 @@ document.addEventListener('click',async ev=>{
   case 'filtros':S.f.open=!S.f.open;render();break;
   case 'limpiar':Object.assign(S.f,{estado:'todas',per:'mes',q:'',medio:'',cat:'',producto:'',variante:'',cliente:'',envio:'',mmin:'',mmax:'',desc:'',desde:'',hasta:''});render();break;
   case 'dfilt':S.dfilt=v;render();break;
+  case 'prodby':S.prodBy=v;render();break;
+  case 'prodall':S.prodAll=!S.prodAll;render();break;
   case 'dpct':{const i=$('#v-dpct');if(i){i.value=(parseAR(i.value)===+v)?'':v;calcTotal()}break}
   case 'hday':S.hday=v;render();break;
   case 'dtab':S.dtab=v;render();break;

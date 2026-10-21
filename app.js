@@ -122,7 +122,8 @@ const unitMult=it=>{const n=norm(it.producto);if(!/\bcombo/.test(n))return 1;
   const r=n.match(/(\d+)\s*(?:p\b|pers|personas?|hamburguesas?|burgers?|burgas?|unidades|u\b)/)||n.match(/(?:para|x|por|de)\s*(\d+)/)||n.match(/\bcombo\s*(\d+)/);
   const k=r?parseInt(r[1],10):1;return k>=1&&k<=50?k:1};
 const itUnits=it=>it.cantidad*unitMult(it);
-const itTotal=it=>Math.round(it.cantidad*it.precio);
+const extraSum=it=>sum(it.extras||[],e=>e.p||0);
+const itTotal=it=>Math.round(it.cantidad*(it.precio+extraSum(it)));
 const descF=o=>o.descMonto>0?o.total/(o.total+o.descMonto):1;
 const pctStr=n=>String(n).replace('.',',');
 const unidades=o=>sum(itemsOf(o),i=>i.cantidad);
@@ -258,7 +259,7 @@ function listaVentas(d){
     h+='</div><div class="day"><b>'+esc(dayName(o.ts))+'</b><span class="num">'+m(sum(dia,x=>x.total))+' · '+plural(dia.length,'cobrada','cobradas')+(pn?' · '+plural(pn,'pendiente','pendientes'):'')+'</span></div><div class="list">'}
     h+=ventaRow(o)});
   return h+'</div>'}
-function vVentas(d){
+function vVentasLista(d){
   const f=S.f,base=ventasBase(d),vs=base.filter(valida),vc=vs.filter(o=>o.estado==='cobrada'),pp=vs.filter(o=>porCobrarDe(o)>0);
   const val={vendido:sum(vc,o=>o.total),cobrado:sum(vs,cobrado),porcobrar:sum(vs,porCobrarDe)}[S.vmetric];
   const lab={vendido:'Total vendido',cobrado:'Total cobrado',porcobrar:'Por cobrar'}[S.vmetric];
@@ -270,8 +271,7 @@ function vVentas(d){
   const cliNames=(()=>{const seen=new Set(),a=[];d.ventas.slice().sort((x,y)=>y.ts-x.ts).forEach(o=>{const n=(o.cliente||'Mostrador').trim(),k=norm(n);if(!seen.has(k)){seen.add(k);a.push(n)}});return a.sort((x,y)=>x.localeCompare(y,'es'))})();
   const nF=(f.medio?1:0)+(f.cat?1:0)+(custom?1:0)+(f.producto?1:0)+(f.variante?1:0)+(f.cliente?1:0)+(f.envio?1:0)+(f.desc?1:0)+((f.mmin||f.mmax)?1:0);
   const fld=(id,label,inner)=>'<div class="field"><label for="'+id+'">'+label+'</label>'+inner+'</div>';
-  return '<div class="top"><h1>Ventas</h1><button class="pill-btn" data-a="nueva">'+ico('plus',18)+' Venta</button></div>'+
-  '<section class="hero"><div class="per" role="group" aria-label="Período">'+['hoy','semana','mes','todo'].map(p=>'<button data-a="per" data-v="'+p+'" aria-pressed="'+(!custom&&f.per===p)+'">'+(p==='semana'?'Semana':PER[p])+'</button>').join('')+'</div>'+
+  return '<section class="hero"><div class="per" role="group" aria-label="Período">'+['hoy','semana','mes','todo'].map(p=>'<button data-a="per" data-v="'+p+'" aria-pressed="'+(!custom&&f.per===p)+'">'+(p==='semana'?'Semana':PER[p])+'</button>').join('')+'</div>'+
   '<div><div class="lbl">'+lab+(custom?' · rango elegido':'')+'</div><div class="big num">'+m(val)+'</div><div class="sub">'+({vendido:plural(vc.length,'venta cobrada','ventas cobradas'),cobrado:plural(vs.length,'operación válida','operaciones válidas'),porcobrar:plural(pp.length,'pendiente','pendientes')+' · no suman a ventas'})[S.vmetric]+'</div></div>'+
   '<div class="seg" role="group" aria-label="Indicador">'+[['vendido','Vendido'],['cobrado','Cobrado'],['porcobrar','Por cobrar']].map(x=>'<button data-a="vmetric" data-v="'+x[0]+'" aria-pressed="'+(S.vmetric===x[0])+'">'+x[1]+'</button>').join('')+'</div></section>'+
   '<div class="chips" role="group" aria-label="Estado">'+['todas','cobrada','pendiente','cancelada','devuelta'].map(e=>'<button class="chip" data-a="estado" data-v="'+e+'" aria-pressed="'+(f.estado===e)+'">'+(e==='todas'?'Todas':ESTADOS[e])+' <i>'+cnt(e)+'</i></button>').join('')+'</div>'+
@@ -680,9 +680,50 @@ function prodList(vs){
   return gSeg('prodby',[['monto','Por monto'],['unidades','Por unidades']],S.prodBy)+'<div class="bars" style="margin-top:12px">'+L.map((x,i)=>'<div class="br"><span class="nm">'+(i+1)+'. '+esc(x.n)+'</span><b class="num">'+m(x.total)+'</b><small class="un"><b>'+qty(x.q)+'</b> '+(x.q===1?'vendido':'vendidos')+(x.u!==x.q?' · equivale a <b>'+qty(x.u)+'</b> unidades':'')+'</small><div class="track"><div class="fill" style="width:'+Math.max(3,Math.round((by?x.u:x.total)/mx*100))+'%"></div></div></div>').join('')+'</div>'+
     (A.length>5?'<button class="btn ghost" style="margin-top:4px" data-a="prodall">'+(S.prodAll?'Ver solo los 5 primeros':'Ver lista completa ('+A.length+' productos)')+'</button>':'')}
 function agregadosHtml(vs){
-  const mp=new Map();vs.forEach(o=>itemsOf(o).forEach(it=>{if(!it.agregados)return;String(it.agregados).split(/[,;+\n]|\sy\s/i).map(x=>x.trim()).filter(Boolean).forEach(t=>{const k=norm(t),e=mp.get(k)||{n:t,v:0};e.v+=it.cantidad;mp.set(k,e)})}));
-  const L=[...mp.values()].sort((a,b)=>b.v-a.v).slice(0,8);
-  return '<div class="sec"><h2>Agregados más pedidos</h2></div><div class="card">'+(L.length?ubars(L,x=>qty(x),''):'<p class="hint">Todavía no registraste agregados. Podés escribirlos en cada producto al cargar una venta (medallón extra, huevo, jamón…).</p>')+'</div>'}
+  const mp=new Map(),add=(t,q,rev)=>{const k=norm(t);if(!k)return;const e=mp.get(k)||{n:t,v:0,rev:0};e.v+=q;e.rev+=rev;mp.set(k,e)};
+  vs.forEach(o=>{const fd=descF(o);itemsOf(o).forEach(it=>{if(it.extras&&it.extras.length)it.extras.forEach(x=>add(x.n,it.cantidad,Math.round(it.cantidad*(x.p||0)*fd)));
+    else if(it.agregados)String(it.agregados).split(/[,;+\n]|\sy\s/i).map(x=>x.trim()).filter(Boolean).forEach(t=>add(t,it.cantidad,0))})});
+  const L=[...mp.values()].sort((a,b)=>b.v-a.v||b.rev-a.rev).slice(0,8),tot=sum([...mp.values()],e=>e.rev);
+  return '<div class="sec"><h2>Agregados más pedidos</h2></div><div class="card">'+(L.length?ubars(L,(x,r)=>qty(x)+(r.rev?' · '+m(r.rev):''),'')+(tot?'<p class="hint" style="margin-top:10px">Ingresos por agregados: <b>'+m(tot)+'</b> (ya incluidos en el total vendido).</p>':''):'<p class="hint">Todavía no registraste agregados. Podés cargarlos con su precio en cada producto al hacer una venta (medallón extra, huevo, jamón…).</p>')+'</div>'}
+/* ---------- Ventas: pestañas Ventas / Clientes ---------- */
+S.vtab='ventas';S.vcli='';S.cl={q:'',ord:'compras',fil:'todos',est:'todas'};
+function vVentas(d){
+  const tabs=[['ventas','Ventas'],['clientes','Clientes']];
+  return '<div class="top"><h1>Ventas</h1><button class="pill-btn" data-a="nueva">'+ico('plus',18)+' Venta</button></div><div class="dtabs" role="tablist" aria-label="Secciones de ventas">'+tabs.map(t=>'<button role="tab" data-a="vtab" data-v="'+t[0]+'" aria-selected="'+(S.vtab===t[0])+'">'+t[1]+'</button>').join('')+'</div><div class="dpane">'+
+    (S.vtab==='clientes'?(S.vcli?vCliente(d):vClientes(d)):vVentasLista(d))+'</div>'}
+function clientesAgg(d){const mp=new Map();
+  d.ventas.forEach(o=>{const nm=(o.cliente||'').trim(),k=norm(nm);if(!k||k==='mostrador')return;
+    const e=mp.get(k)||{k,n:nm,compras:0,total:0,deuda:0,pend:0,pedidos:0,last:0,units:0};
+    e.pedidos++;if(o.ts>=e.last){e.last=o.ts;e.n=nm}
+    if(valida(o)){const pc=porCobrarDe(o);if(pc>0){e.deuda+=pc;e.pend++}}
+    if(o.estado==='cobrada'){e.compras++;e.total+=o.total;e.units+=sum(itemsOf(o),itUnits)}
+    mp.set(k,e)});
+  return [...mp.values()]}
+function vClientes(d){
+  const c=S.cl,q=norm(c.q),all=clientesAgg(d);
+  const F={todos:()=>true,deuda:e=>e.deuda>0,uno:e=>e.compras===1,algunas:e=>e.compras>=2&&e.compras<=4,muchas:e=>e.compras>=5};
+  const L=all.filter(e=>(!q||norm(e.n).includes(q))&&(F[c.fil]||F.todos)(e));
+  const ORD={compras:(a,b)=>b.compras-a.compras||b.total-a.total,monto:(a,b)=>b.total-a.total||b.compras-a.compras,reciente:(a,b)=>b.last-a.last,nombre:(a,b)=>a.n.localeCompare(b.n,'es'),deuda:(a,b)=>b.deuda-a.deuda||b.total-a.total};
+  L.sort(ORD[c.ord]||ORD.compras);
+  let h='<div class="search"><input class="inp" id="clq" data-in="clq" type="search" placeholder="Buscar cliente por nombre" value="'+esc(c.q)+'" autocomplete="off"></div>'+
+   gChips('clfil',[['todos','Todos'],['deuda','Con deuda'],['uno','1 compra'],['algunas','2 a 4 compras'],['muchas','5 o más']],c.fil)+
+   '<div class="field" style="margin-top:10px"><label for="clord">Ordenar por</label><select class="inp" id="clord" data-in="clord">'+[['compras','Más compras'],['monto','Mayor monto comprado'],['reciente','Compra más reciente'],['deuda','Mayor deuda'],['nombre','Nombre (A-Z)']].map(o=>'<option value="'+o[0]+'"'+(c.ord===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select></div>'+
+   '<div class="card" style="margin-top:12px"><div class="k">'+plural(L.length,'cliente','clientes')+(L.length!==all.length?' de '+all.length:'')+'</div><div class="v num">'+m(sum(L,e=>e.total))+'</div><div class="s">Comprado en total'+(sum(L,e=>e.deuda)?' · <b class="neg">por cobrar '+m(sum(L,e=>e.deuda))+'</b>':'')+'</div></div>';
+  if(!all.length)return h+'<div class="empty" style="margin-top:12px"><b>Todavía no hay clientes</b>Escribí el nombre del cliente al cargar una venta y va a aparecer acá con todo su historial. Las ventas de “Mostrador” no se listan.</div>';
+  if(!L.length)return h+'<div class="empty" style="margin-top:12px"><b>Ningún cliente coincide</b>Probá con otro nombre o cambiá los filtros.</div>';
+  return h+'<div class="list" style="margin-top:12px">'+L.map(e=>'<button class="item" data-a="cvc" data-v="'+esc(e.k)+'"><span class="ava">'+esc(e.n.charAt(0).toUpperCase())+'</span><span class="mid"><div class="t">'+esc(e.n)+'</div><div class="d">'+plural(e.compras,'compra','compras')+(e.pend?' · '+plural(e.pend,'pendiente','pendientes'):'')+' · última '+fCorta(e.last)+'</div></span><span class="r"><span class="amt num">'+m(e.total)+'</span>'+(e.deuda?'<span class="tag pendiente">Debe '+m(e.deuda)+'</span>':'')+'</span></button>').join('')+'</div>'}
+function vCliente(d){
+  const e=clientesAgg(d).find(x=>x.k===S.vcli);if(!e){S.vcli='';return vClientes(d)}
+  const all=d.ventas.filter(o=>norm(o.cliente||'Mostrador')===e.k).sort((a,b)=>b.ts-a.ts),est=S.cl.est,L=est==='todas'?all:all.filter(o=>o.estado===est);
+  const pm=new Map();all.filter(o=>o.estado==='cobrada').forEach(o=>itemsOf(o).forEach(it=>{const k=norm(it.producto),x=pm.get(k)||{n:it.producto,u:0};x.u+=it.cantidad;pm.set(k,x)}));
+  const fav=[...pm.values()].sort((a,b)=>b.u-a.u).slice(0,3).map(x=>esc(x.n)+' ×'+qty(x.u)).join(' · ');
+  const ind=(k,v,s,cls)=>'<div class="card'+(cls?' '+cls:'')+'"><div class="k">'+k+'</div><div class="v num">'+v+'</div><div class="s">'+s+'</div></div>';
+  return '<button class="link" data-a="cback" style="margin-bottom:10px">‹ Todos los clientes</button><div style="display:flex;align-items:center;gap:12px;margin-bottom:12px"><span class="ava" style="width:50px;height:50px;font-size:20px">'+esc(e.n.charAt(0).toUpperCase())+'</span><div style="min-width:0"><h2 style="font-size:22px;overflow-wrap:anywhere">'+esc(e.n)+'</h2><div class="date">Cliente desde '+fCorta(all[all.length-1].ts)+'</div></div></div>'+
+   '<div class="ind">'+ind('Total comprado',m(e.total),plural(e.compras,'compra cobrada','compras cobradas'))+ind('Ticket promedio',e.compras?m(Math.round(e.total/e.compras)):'—','Por compra')+
+   ind('Por cobrar',m(e.deuda),e.pend?plural(e.pend,'pedido pendiente','pedidos pendientes'):'Sin deuda',e.deuda?'gas':'')+ind('Unidades',qty(e.units),'En sus compras cobradas')+'</div>'+
+   (fav?'<p class="hint" style="margin-top:10px">Pide más: <b style="color:var(--ink)">'+fav+'</b></p>':'')+
+   '<div class="sec"><h2>Historial de compras</h2></div>'+gChips('vcest',[['todas','Todas <i>'+all.length+'</i>'],['cobrada','Cobradas <i>'+all.filter(o=>o.estado==='cobrada').length+'</i>'],['pendiente','Pendientes <i>'+all.filter(o=>o.estado==='pendiente').length+'</i>'],['cancelada','Canceladas'],['devuelta','Devueltas']],est)+
+   (L.length?'<div class="list" style="margin-top:10px">'+L.map(ventaRow).join('')+'</div><p class="hint" style="margin-top:10px">Tocá una venta para ver el detalle, cobrarla o editarla.</p>':'<div class="empty" style="margin-top:10px"><b>Sin ventas con ese estado</b>Probá con otro filtro.</div>')}
 
 /* ---------- hojas (formularios y detalle) ---------- */
 const cloneV=o=>JSON.parse(JSON.stringify(o));
@@ -695,12 +736,13 @@ function closeSheet(){S.sheet=null;$('#layer').innerHTML='';lockScroll(false)}
 const head=(t)=>'<div class="sh-top"><h2>'+t+'</h2><button class="icon-btn" data-a="close" aria-label="Cerrar">'+ico('x',20)+'</button></div>';
 const chipsOf=(grp,opts,cur)=>'<div class="opts" role="group" data-grp="'+grp+'">'+opts.map(o=>'<button type="button" class="chip" data-a="pick" data-v="'+o[0]+'" aria-pressed="'+(o[0]===cur)+'">'+o[1]+'</button>').join('')+'</div>';
 const grpVal=g=>{const e=document.querySelector('[data-grp="'+g+'"] [aria-pressed="true"]');return e?e.dataset.v:''};
-const blankItem=()=>({producto:'',variante:'',agregados:'',cantidad:'1',precio:'',costo:'',categoria:''});
+const blankItem=()=>({producto:'',variante:'',extras:[],cantidad:'1',precio:'',costo:'',categoria:''});
+const extrasOf=i=>(i.extras&&i.extras.length)?i.extras.map(e=>({n:e.n,p:inputNum(e.p)})):String(i.agregados||'').split(/[,;]/).map(x=>x.trim()).filter(Boolean).map(n=>({n,p:''}));
 function openSheet(sh){
   const f={detalle:shDetalle,venta:shVenta,cobro:shCobro,gasto:shGasto,transf:shTransf,saldos:shSaldos,confirm:shConfirm,gastoM:shGastoM,gastoDet:shGastoDet,merge:shMerge,pres:shPres}[sh.type];
   const prev=document.querySelector('.sheet'),top=prev?prev.scrollTop:0;
   if(sh.type==='venta'&&!sh.items){const old=sh.id?findV(sh.id):null;
-    sh.items=old?itemsOf(old).map(i=>({producto:i.producto||'',variante:i.variante||'',cantidad:qty(i.cantidad),precio:inputNum(i.precio),costo:inputNum(i.costo),categoria:i.categoria||'',agregados:i.agregados||''})):[blankItem()]}
+    sh.items=old?itemsOf(old).map(i=>({producto:i.producto||'',variante:i.variante||'',cantidad:qty(i.cantidad),precio:inputNum(i.precio),costo:inputNum(i.costo),categoria:i.categoria||'',extras:extrasOf(i)})):[blankItem()]}
   if(sh.type==='gastoM'&&!sh.items){const og=sh.id?D().gastos.find(x=>x.id===sh.id):null;sh.items=og?gItems(og).map(i=>({nombre:i.nombre,cantidad:numStr(i.cantidad),unidad:i.unidad||'',precio:inputNum(i.precio)})):[]}
   S.sheet=sh;
   const html=f(sh);if(html==null){closeSheet();return}
@@ -709,9 +751,9 @@ function openSheet(sh){
   if(prev&&sh.type==='detalle')document.querySelector('.sheet').scrollTop=top;
   if(sh.type==='gastoM')calcG();
   if(sh.type==='venta'){calcTotal();if(!sh.id&&window.matchMedia&&matchMedia('(hover:hover)').matches)setTimeout(()=>{const e=document.querySelector('.i-prod');if(e)e.focus({preventScroll:true})},60)}}
-function readItems(){return [...document.querySelectorAll('#items .itm')].map(r=>{const v=r.querySelector('.vars [aria-pressed="true"]');return {producto:r.querySelector('.i-prod').value,variante:v?v.dataset.v:'',cantidad:r.querySelector('.i-cant').value,precio:r.querySelector('.i-precio').value,costo:r.querySelector('.i-costo').value,categoria:r.querySelector('.i-cat').value,agregados:r.querySelector('.i-agr').value}})}
+function readItems(){return [...document.querySelectorAll('#items .itm')].map(r=>{const v=r.querySelector('.vars [aria-pressed="true"]');return {producto:r.querySelector('.i-prod').value,variante:v?v.dataset.v:'',cantidad:r.querySelector('.i-cant').value,precio:r.querySelector('.i-precio').value,costo:r.querySelector('.i-costo').value,categoria:r.querySelector('.i-cat').value,extras:[...r.querySelectorAll('.agr')].map(a=>({n:a.querySelector('.a-n').value,p:a.querySelector('.a-p').value}))}})}
 function calcTotal(){let t=0;const rows=document.querySelectorAll('#items .itm');
-  rows.forEach(r=>{const c=parseAR(r.querySelector('.i-cant').value),p=parseAR(r.querySelector('.i-precio').value);const s=(isFinite(c)&&isFinite(p))?Math.round(c*toC(p)):0;t+=s;const e=r.querySelector('.i-sub');if(e)e.textContent=m(s)});
+  rows.forEach(r=>{const c=parseAR(r.querySelector('.i-cant').value),p=parseAR(r.querySelector('.i-precio').value),ex=[...r.querySelectorAll('.a-p')].reduce((a,e)=>{const v=parseAR(e.value);return a+(isFinite(v)&&v>0?toC(v):0)},0);const s=(isFinite(c)&&isFinite(p))?Math.round(c*(toC(p)+ex)):0;t+=s;const e=r.querySelector('.i-sub');if(e)e.textContent=m(s)});
   const pi=$('#v-dpct'),pv=pi?parseAR(pi.value):NaN,pct=(isFinite(pv)&&pv>0)?Math.min(100,pv):0,dm=Math.round(t*pct/100);
   const el=$('#v-total');if(el)el.textContent=m(t-dm);
   const dme=$('#v-dm');if(dme)dme.textContent='- '+m(dm);
@@ -719,7 +761,7 @@ function calcTotal(){let t=0;const rows=document.querySelectorAll('#items .itm')
   document.querySelectorAll('[data-a=dpct]').forEach(b=>b.setAttribute('aria-pressed',String(!!pi&&pv===+b.dataset.v)));const tl=$('#v-tl');if(tl)tl.textContent=rows.length>1?'Total · '+rows.length+' productos':'Total'}
 const rowVar=row=>{const v=row.querySelector('.vars [aria-pressed="true"]');return v?v.dataset.v:''};
 function lookupItem(name,vari){const q=norm(name);if(!q)return null;let p=null;
-  S.ventas.slice().sort((a,b)=>b.ts-a.ts).some(o=>itemsOf(o).some(it=>{if(norm(it.producto)===q&&(it.variante||'')===(vari||'')&&it.precio>0&&!it.agregados){p=it;return true}return false}));return p}
+  S.ventas.slice().sort((a,b)=>b.ts-a.ts).some(o=>itemsOf(o).some(it=>{if(norm(it.producto)===q&&(it.variante||'')===(vari||'')&&it.precio>0){p=it;return true}return false}));return p}
 function fillRow(row){const pr=row.querySelector('.i-precio');if(pr.value&&pr.dataset.auto!=='1')return;
   const p=lookupItem(row.querySelector('.i-prod').value,rowVar(row));if(!p)return;
   pr.value=inputNum(p.precio);pr.dataset.auto='1';const c=row.querySelector('.i-costo'),k=row.querySelector('.i-cat');
@@ -747,7 +789,7 @@ function shDetalle(sh){
   let h=head(esc(o.producto))+'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div class="num" style="font-size:32px;font-weight:800">'+m(o.total)+'</div>'+tag+'</div>';
   if(o.demo)h+='<div class="banner"><span>Esto es un ejemplo. Registrá tu primera venta con el botón +.</span></div>';
   h+='<div class="card"><dl class="kv" style="margin:0">'+kv('Cliente',esc(o.cliente||'Mostrador'))+kv('Fecha',fDia(o.ts)+' · '+fHora(o.ts))+(o.descMonto>0?kv('Subtotal',m(o.total+o.descMonto))+kv('Descuento','<b class="neg">'+pctStr(o.descPct)+'% · -'+m(o.descMonto)+'</b>'):'')+kv('Medio de pago',MLABEL[o.medio])+kv('Envío',esc(o.envio))+kv('Cobrado',m(cob))+(pc?kv('Por cobrar','<b class="neg">'+m(pc)+'</b>'):'')+kv('Notas',esc(o.notas))+'</dl></div>';
-  h+='<div class="sec" style="margin-top:16px"><h2 style="font-size:16px">Productos ('+its.length+')</h2></div><div class="card"><ul class="hist its">'+its.map(it=>'<li class="itl"><span class="mid"><b>'+esc(itName(it))+'</b>'+(it.agregados?'<small style="color:var(--accent);font-weight:600">+ '+esc(it.agregados)+'</small>':'')+'<small>'+qty(it.cantidad)+' × '+m(it.precio)+(it.categoria?' · '+esc(it.categoria):'')+(it.costo?' · costo '+m(it.costo):'')+'</small></span><b class="num">'+m(itTotal(it))+'</b></li>').join('')+'</ul></div>';
+  h+='<div class="sec" style="margin-top:16px"><h2 style="font-size:16px">Productos ('+its.length+')</h2></div><div class="card"><ul class="hist its">'+its.map(it=>'<li class="itl"><span class="mid"><b>'+esc(itName(it))+'</b>'+(extrasOf(it).length?'<small style="color:var(--accent);font-weight:600">+ '+((it.extras&&it.extras.length)?it.extras.map(e=>esc(e.n)+(e.p?' ('+m(e.p)+')':'')).join(', '):esc(it.agregados))+'</small>':'')+'<small>'+qty(it.cantidad)+' × '+m(it.precio+extraSum(it))+(it.categoria?' · '+esc(it.categoria):'')+(it.costo?' · costo '+m(it.costo):'')+'</small></span><b class="num">'+m(itTotal(it))+'</b></li>').join('')+'</ul></div>';
   if((o.cobros||[]).length&&valida(o))h+='<div class="sec" style="margin-top:16px"><h2 style="font-size:16px">Cobros</h2></div><div class="card"><ul class="hist">'+o.cobros.map(c=>'<li><b class="pos num">'+m(c.monto)+'</b> · '+MLABEL[c.medio]+' · '+fFull(c.ts)+'</li>').join('')+'</ul></div>';
   if(!valida(o)&&(o.cobros||[]).length)h+='<p class="hint" style="margin-top:10px">Los cobros de esta venta no suman a tus saldos porque está '+ESTADOS[o.estado].toLowerCase()+'.</p>';
   if((o.hist||[]).length)h+='<div class="sec" style="margin-top:16px"><h2 style="font-size:16px">Historial</h2></div><div class="card"><ul class="hist">'+o.hist.slice().reverse().map(x=>'<li><b style="color:var(--ink)">'+fFull(x.ts)+'</b> · '+esc(x.m)+'</li>').join('')+'</ul></div>';
@@ -759,13 +801,14 @@ function shDetalle(sh){
   if(valida(o))h+='<button class="btn sec2" data-a="cancelar" data-id="'+esc(o.id)+'">Cancelar venta</button>';
   h+='<button class="btn ghost" data-a="eliminar" data-id="'+esc(o.id)+'">Eliminar</button></div>';
   return h}
+const agrRow=(x,i,j)=>'<div class="agr"><input class="inp a-n" list="dl-agr" autocomplete="off" autocapitalize="sentences" aria-label="Agregado" placeholder="Ej: medallón extra" value="'+esc(x.n)+'"><input class="inp a-p" data-in="calc" inputmode="decimal" aria-label="Precio del agregado" placeholder="Precio $" value="'+esc(x.p)+'"><button type="button" class="agr-x" data-a="rm-agr" data-i="'+i+'" data-j="'+j+'" aria-label="Quitar agregado">✕</button></div>';
 function itemHtml(it,i,n){
   const id=x=>x+'-'+i;
   return '<div class="itm" data-i="'+i+'">'+
   (n>1?'<div class="itm-h"><b>Producto '+(i+1)+'</b><button type="button" class="link" data-a="rm-item" data-i="'+i+'">Quitar</button></div>':'')+
   '<div class="field"><label for="'+id('ip')+'">Producto</label><div class="cbw"><input class="inp i-prod" id="'+id('ip')+'" autocomplete="off" autocapitalize="sentences" role="combobox" aria-autocomplete="list" placeholder="Elegí de tu carta o escribí otro" value="'+esc(it.producto)+'"><div class="cb" role="listbox" hidden></div></div></div>'+
   '<div class="field"><span class="lab">Tamaño</span><div class="opts vars" role="group" aria-label="Tamaño">'+VARIANTES.map(v=>'<button type="button" class="chip" data-a="var" data-v="'+v+'" aria-pressed="'+(it.variante===v)+'">'+v+'</button>').join('')+'</div></div>'+
-  '<div class="field"><label for="'+id('ia')+'">Agregados (opcional)</label><input class="inp i-agr" id="'+id('ia')+'" list="dl-agr" autocomplete="off" autocapitalize="sentences" placeholder="Ej: medallón extra, huevo, jamón" value="'+esc(it.agregados||'')+'"></div>'+
+  '<div class="field"><span class="lab">Agregados (opcional)</span>'+(it.extras&&it.extras.length?'<div class="agrs">'+it.extras.map((x,j)=>agrRow(x,i,j)).join('')+'</div>':'')+'<button type="button" class="link agr-add" data-a="add-agr" data-i="'+i+'">+ Agregar un agregado</button></div>'+
   '<div class="two"><div class="field"><label for="'+id('ic')+'">Cantidad</label><div class="stepper"><button type="button" data-a="step" data-d="-1" aria-label="Menos">−</button><input class="i-cant" id="'+id('ic')+'" data-in="calc" inputmode="decimal" value="'+esc(it.cantidad)+'"><button type="button" data-a="step" data-d="1" aria-label="Más">+</button></div></div>'+
   '<div class="field"><label for="'+id('ipr')+'">Precio unitario ($)</label><input class="inp i-precio" id="'+id('ipr')+'" data-in="calc" inputmode="decimal" placeholder="0" value="'+esc(it.precio)+'"></div></div>'+
   (n>1?'<div class="itm-sub"><span>Subtotal</span><b class="num i-sub">$ 0</b></div>':'')+
@@ -789,7 +832,7 @@ function shVenta(sh){
   '<div class="field"><span class="lab">Estado</span>'+chipsOf('estado',estados,o.estado)+'</div>'+
   '<div class="field"><label for="v-ts">Fecha y hora</label><input class="inp" type="datetime-local" id="v-ts" value="'+toInput(o.ts)+'"></div>'+
   '<div class="field"><label for="v-notas">Notas (opcional)</label><textarea class="inp" id="v-notas" rows="2" placeholder="Talle, color, entrega…">'+esc(o.notas)+'</textarea></div>'+
-  dl('dl-agr',[...new Set(V.flatMap(o=>itemsOf(o).map(i=>(i.agregados||'').trim())).filter(Boolean))])+dl('dl-cli',uniqC)+dl('dl-cat',uniqI('categoria'))+'</div>'+
+  dl('dl-agr',[...new Set(V.flatMap(o=>itemsOf(o).flatMap(i=>extrasOf(i).map(e=>e.n))).filter(Boolean))])+dl('dl-cli',uniqC)+dl('dl-cat',uniqI('categoria'))+'</div>'+
   '<div class="sh-foot"><div class="itm-sub" id="v-subl" hidden></div><div class="total"><span id="v-tl">Total</span><b class="num" id="v-total">$ 0</b></div><div class="err" id="v-err" role="alert"></div><button class="btn" data-a="save-venta">'+(old?'Guardar cambios':'Guardar venta')+'</button></div>'}
 async function saveV(o,msg){const now=Date.now();o.upd=now;o.hist=(o.hist||[]).concat([{ts:now,m:msg}]).slice(-30);await put('ventas',o.id,o)}
 async function doSaveVenta(){
@@ -802,7 +845,9 @@ async function doSaveVenta(){
     if(!(cant>0))return E('la cantidad tiene que ser mayor a 0.');
     if(!(pr>=0)||isNaN(pr))return E('ingresá el precio unitario.');
     if(cs&&!(costo>=0))return E('el costo no es válido.');
-    its.push({producto,variante:r.variante||'',agregados:(r.agregados||'').trim(),categoria:r.categoria.trim(),cantidad:cant,precio:toC(pr),costo:cs?toC(costo):0})}
+    const extras=[];for(const x of (r.extras||[])){const en=(x.n||'').trim(),ps=(x.p||'').trim();if(!en&&!ps)continue;
+      if(!en)return E('escribí el nombre del agregado.');const ep=ps?parseAR(ps):0;if(isNaN(ep)||ep<0)return E('el precio de "'+en+'" no es válido.');extras.push({n:en,p:toC(ep)})}
+    its.push({producto,variante:r.variante||'',extras,agregados:extras.map(e=>e.n).join(', '),categoria:r.categoria.trim(),cantidad:cant,precio:toC(pr),costo:cs?toC(costo):0})}
   let ts=new Date(val('v-ts')).getTime();if(!isFinite(ts))ts=Date.now();
   const medio=grpVal('medio')||'efectivo',estado=grpVal('estado')||'cobrada';
   const subtotal=sum(its,itTotal),pRaw=val('v-dpct').trim(),pct=pRaw?parseAR(pRaw):0;
@@ -914,8 +959,8 @@ async function saveFile(filename,data){
     a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);toast('Archivo listo')}
   catch(e){toast('No se pudo guardar el archivo.')}}
 const stamp=()=>toDateInput(Date.now());
-function ventasCsv(list){const rows=[['N° venta','Fecha','Hora','Cliente','Producto','Variante','Agregados','Categoría','Cantidad','Precio unitario','Subtotal','Total venta','Cobrado','Por cobrar','Medio de pago','Envío','Estado','Costo unitario','Notas','Descuento (%)','Descuento ($)']];
-  list.slice().sort((a,b)=>a.ts-b.ts).forEach((o,k)=>itemsOf(o).forEach((it,j)=>rows.push([k+1,fDate(o.ts),fHora(o.ts),o.cliente||'Mostrador',it.producto,it.variante||'',it.agregados||'',it.categoria||'',String(it.cantidad).replace('.',','),csvNum(it.precio),csvNum(itTotal(it)),j===0?csvNum(o.total):'',j===0?csvNum(cobrado(o)):'',j===0?csvNum(porCobrarDe(o)):'',MLABEL[o.medio],o.envio||'',ESTADOS[o.estado],it.costo?csvNum(it.costo):'',j===0?(o.notas||''):'',j===0&&o.descPct?pctStr(o.descPct):'',j===0&&o.descMonto?csvNum(o.descMonto):''])));
+function ventasCsv(list){const rows=[['N° venta','Fecha','Hora','Cliente','Producto','Variante','Agregados','Precio agregados','Categoría','Cantidad','Precio unitario','Subtotal','Total venta','Cobrado','Por cobrar','Medio de pago','Envío','Estado','Costo unitario','Notas','Descuento (%)','Descuento ($)']];
+  list.slice().sort((a,b)=>a.ts-b.ts).forEach((o,k)=>itemsOf(o).forEach((it,j)=>rows.push([k+1,fDate(o.ts),fHora(o.ts),o.cliente||'Mostrador',it.producto,it.variante||'',it.agregados||'',extraSum(it)?csvNum(extraSum(it)):'',it.categoria||'',String(it.cantidad).replace('.',','),csvNum(it.precio),csvNum(itTotal(it)),j===0?csvNum(o.total):'',j===0?csvNum(cobrado(o)):'',j===0?csvNum(porCobrarDe(o)):'',MLABEL[o.medio],o.envio||'',ESTADOS[o.estado],it.costo?csvNum(it.costo):'',j===0?(o.notas||''):'',j===0&&o.descPct?pctStr(o.descPct):'',j===0&&o.descMonto?csvNum(o.descMonto):''])));
   return csv(rows)}
 function realData(){return S.ventas.length||S.gastos.length||S.transf.length||Object.keys(S.config).length}
 async function pool(items,fn,n){let i=0;await Promise.all(Array.from({length:n},async()=>{while(i<items.length){await fn(items[i++])}}))}
@@ -938,13 +983,18 @@ document.addEventListener('click',async ev=>{
   case 'nueva':openSheet({type:'venta'});break;
   case 'hidedemo':S.demoHidden=true;try{localStorage.setItem('argyr:demoHidden','1')}catch(e){}render();break;
   case 'showdemo':S.demoHidden=false;try{localStorage.removeItem('argyr:demoHidden')}catch(e){}S.tab='inicio';render();break;
-  case 'goventas':S.tab='ventas';S.f.per=el.dataset.per;S.f.estado=el.dataset.estado||'todas';S.f.desde=S.f.hasta='';S.f.q='';Object.assign(S.f,{medio:'',cat:'',producto:'',variante:'',cliente:'',envio:'',desc:'',mmin:'',mmax:''});window.scrollTo(0,0);render();break;
+  case 'goventas':S.tab='ventas';S.vtab='ventas';S.f.per=el.dataset.per;S.f.estado=el.dataset.estado||'todas';S.f.desde=S.f.hasta='';S.f.q='';Object.assign(S.f,{medio:'',cat:'',producto:'',variante:'',cliente:'',envio:'',desc:'',mmin:'',mmax:''});window.scrollTo(0,0);render();break;
   case 'per':S.f.per=v;S.f.desde=S.f.hasta='';render();break;
   case 'vmetric':S.vmetric=v;render();break;
   case 'estado':S.f.estado=v;render();break;
   case 'filtros':S.f.open=!S.f.open;render();break;
   case 'limpiar':Object.assign(S.f,{estado:'todas',per:'mes',q:'',medio:'',cat:'',producto:'',variante:'',cliente:'',envio:'',mmin:'',mmax:'',desc:'',desde:'',hasta:''});render();break;
   case 'dfilt':S.dfilt=v;render();break;
+  case 'vtab':S.vtab=v;S.vcli='';render();break;
+  case 'cvc':S.vcli=v;S.cl.est='todas';window.scrollTo(0,0);render();break;
+  case 'cback':S.vcli='';window.scrollTo(0,0);render();break;
+  case 'clfil':S.cl.fil=v;render();break;
+  case 'vcest':S.cl.est=v;render();break;
   case 'prodby':S.prodBy=v;render();break;
   case 'prodall':S.prodAll=!S.prodAll;render();break;
   case 'dpct':{const i=$('#v-dpct');if(i){i.value=(parseAR(i.value)===+v)?'':v;calcTotal()}break}
@@ -979,7 +1029,7 @@ document.addEventListener('click',async ev=>{
   case 'span':S.span=v;S.sel=-1;render();break;
   case 'cliall':S.cliAll=(v==='todo');render();break;
   case 'cliby':S.cliBy=v;render();break;
-  case 'cli':S.tab='ventas';S.f.per='todo';S.f.estado='todas';S.f.desde=S.f.hasta='';Object.assign(S.f,{medio:'',cat:'',producto:'',variante:'',envio:'',desc:'',mmin:'',mmax:'',q:'',cliente:v});window.scrollTo(0,0);render();break;
+  case 'cli':S.tab='ventas';S.vtab='clientes';S.vcli=norm(v);S.cl.est='todas';window.scrollTo(0,0);render();break;
   case 'bar':S.sel=+el.dataset.i;render();break;
   case 'venta':openSheet({type:'detalle',id});break;
   case 'mov':
@@ -1000,6 +1050,8 @@ document.addEventListener('click',async ev=>{
     if(pr.dataset.auto==='1'){pr.value='';delete pr.dataset.auto}fillRow(row);calcTotal();break}
   case 'cb-pick':{const row=el.closest('.itm'),inp=row.querySelector('.i-prod'),k=row.querySelector('.i-cat');
     inp.value=el.dataset.v;if(el.dataset.c&&!k.value)k.value=el.dataset.c;cbClose();fillRow(row);calcTotal();inp.blur();break}
+  case 'add-agr':{S.sheet.items=readItems();S.sheet.items[+el.dataset.i].extras.push({n:'',p:''});drawItems();const rows=document.querySelectorAll('#items .itm')[+el.dataset.i].querySelectorAll('.agr');const l=rows[rows.length-1];if(l){l.scrollIntoView({block:'nearest'});l.querySelector('.a-n').focus({preventScroll:true})}break}
+  case 'rm-agr':{S.sheet.items=readItems();S.sheet.items[+el.dataset.i].extras.splice(+el.dataset.j,1);drawItems();break}
   case 'rm-item':{S.sheet.items=readItems();S.sheet.items.splice(+el.dataset.i,1);drawItems();break}
   case 'cobrar':openSheet({type:'cobro',id});break;
   case 'editar':openSheet({type:'venta',id});break;
@@ -1032,10 +1084,12 @@ document.addEventListener('click',async ev=>{
   }});
 document.addEventListener('input',ev=>{
   const t=ev.target,k=t.dataset&&t.dataset.in;
-  if(k==='calc'){if(t.classList.contains('i-precio'))delete t.dataset.auto;calcTotal();return}
+  if(k==='calc'){if(t.classList.contains('i-precio')||t.classList.contains('a-p'))delete t.dataset.auto;calcTotal();return}
   if(k==='gcalc'){calcG();return}
   if(k==='gmonto'){delete t.dataset.auto;calcG();return}
   if(k==='gq'){S.g.q=t.value;render();return}
+  if(k==='clq'){S.cl.q=t.value;render();return}
+  if(k==='clord'){S.cl.ord=t.value;render();return}
   if(k==='gord'){S.g.ord=t.value;render();return}
   if(k==='gprod'){S.g.prod=t.value;render();return}
   if(k==='gdesde'){S.g.desde=t.value;render();return}
@@ -1046,6 +1100,8 @@ document.addEventListener('input',ev=>{
   if(k==='fcat'){S.f.cat=t.value;render();return}
   if(k==='fdesde'){S.f.desde=t.value;render();return}
   if(k==='fhasta'){S.f.hasta=t.value;render();return}
+  if(t.classList&&t.classList.contains('a-n')){const pr=t.closest('.agr').querySelector('.a-p');if(!pr.value||pr.dataset.auto==='1'){const nn=norm(t.value);let f=0;if(nn)S.ventas.slice().sort((a,b)=>b.ts-a.ts).some(o=>itemsOf(o).some(i=>(i.extras||[]).some(e=>{if(norm(e.n)===nn&&e.p>0){f=e.p;return true}return false})));if(f){pr.value=inputNum(f);pr.dataset.auto='1'}else if(pr.dataset.auto==='1'){pr.value='';delete pr.dataset.auto}calcTotal()}return}
+  if(t.classList&&t.classList.contains('a-p'))delete t.dataset.auto;
   if(t.classList&&t.classList.contains('i-prod')&&S.sheet&&S.sheet.type==='venta'){cbOpen(t,true);fillRow(t.closest('.itm'))}
 });
 document.addEventListener('change',ev=>{const t=ev.target;if(t.id==='restoref'&&t.files&&t.files[0]){restoreFile(t.files[0]);t.value=''}});

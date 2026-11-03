@@ -38,8 +38,22 @@ function rng(p,prev){const n=Date.now();
   if(p==='hoy'){const a=D0(n);return prev?[a-DAY,a]:[a,a+DAY]}
   if(p==='semana'){const a=wk0(n);return prev?[a-7*DAY,a]:[a,a+7*DAY]}
   if(p==='mes'){return prev?[mo0(n,-1),mo0(n)]:[mo0(n),mo0(n,1)]}
+  if(p==='mesant'){return prev?[mo0(n,-2),mo0(n,-1)]:[mo0(n,-1),mo0(n)]}
+  if(typeof p==='string'&&p.slice(0,2)==='m:'){const a=mkT(p.slice(2));return prev?[mo0(a,-1),a]:[a,mo0(a,1)]}
   return [0,Infinity]}
-const PER={hoy:'Hoy',semana:'Esta semana',mes:'Este mes',todo:'Todo'};
+const mkT=k=>{const a=String(k).split('-');return new Date(+a[0],+a[1]-1,1).getTime()};
+const monthName=k=>{const t=mkT(k),x=new Date(t);return cap(x.toLocaleDateString('es-AR',{month:'long'}))+(x.getFullYear()!==new Date().getFullYear()?' '+x.getFullYear():'')};
+const monthShort=t=>cap(new Date(t).toLocaleDateString('es-AR',{month:'short'}).replace('.',''));
+const PER=new Proxy({hoy:'Hoy',semana:'Esta semana',mes:'Este mes',mesant:'Mes anterior',todo:'Todo'},{get:(t,k)=>t[k]||(typeof k==='string'&&k.slice(0,2)==='m:'?monthName(k.slice(2)):undefined)});
+/* período anterior comparable: mismos días transcurridos */
+function prevR(p){const n=Date.now();
+  if(p==='mes'){const a=mo0(n),pa=mo0(n,-1),days=Math.max(1,Math.ceil((n-a)/DAY));return [pa,Math.min(addD(pa,days),a)]}
+  if(p==='semana'){const a=wk0(n),days=Math.max(1,Math.ceil((n-a)/DAY));return [addD(a,-7),addD(a,-7+days)]}
+  return rng(p,true)}
+const vsLabel=p=>({hoy:'vs ayer',semana:'vs semana ant. (mismos días)',mes:'vs mes ant. (mismos días)',mesant:'vs el mes previo'}[p]||'vs mes previo');
+const monthOpts=()=>{const n=Date.now(),a=[];for(let i=0;i<12;i++)a.push(mkey(mo0(n,-i)));return a};
+const perSel=(tgt,cur)=>'<select class="inp msel" data-in="pm" data-t="'+tgt+'" aria-label="Elegir otro mes"><option value="">Elegir otro mes…</option>'+monthOpts().map(k=>'<option value="m:'+k+'"'+(cur==='m:'+k?' selected':'')+'>'+monthName(k)+'</option>').join('')+'</select>';
+
 const newId=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const sum=(a,f)=>a.reduce((x,y)=>x+f(y),0);
 /* ---------- estado ---------- */
@@ -271,8 +285,8 @@ function vVentasLista(d){
   const cliNames=(()=>{const seen=new Set(),a=[];d.ventas.slice().sort((x,y)=>y.ts-x.ts).forEach(o=>{const n=(o.cliente||'Mostrador').trim(),k=norm(n);if(!seen.has(k)){seen.add(k);a.push(n)}});return a.sort((x,y)=>x.localeCompare(y,'es'))})();
   const nF=(f.medio?1:0)+(f.cat?1:0)+(custom?1:0)+(f.producto?1:0)+(f.variante?1:0)+(f.cliente?1:0)+(f.envio?1:0)+(f.desc?1:0)+((f.mmin||f.mmax)?1:0);
   const fld=(id,label,inner)=>'<div class="field"><label for="'+id+'">'+label+'</label>'+inner+'</div>';
-  return '<section class="hero"><div class="per" role="group" aria-label="Período">'+['hoy','semana','mes','todo'].map(p=>'<button data-a="per" data-v="'+p+'" aria-pressed="'+(!custom&&f.per===p)+'">'+(p==='semana'?'Semana':PER[p])+'</button>').join('')+'</div>'+
-  '<div><div class="lbl">'+lab+(custom?' · rango elegido':'')+'</div><div class="big num">'+m(val)+'</div><div class="sub">'+({vendido:plural(vc.length,'venta cobrada','ventas cobradas'),cobrado:plural(vs.length,'operación válida','operaciones válidas'),porcobrar:plural(pp.length,'pendiente','pendientes')+' · no suman a ventas'})[S.vmetric]+'</div></div>'+
+  return '<section class="hero"><div class="per" role="group" aria-label="Período">'+['hoy','semana','mes','mesant','todo'].map(p=>'<button data-a="per" data-v="'+p+'" aria-pressed="'+(!custom&&f.per===p)+'">'+({semana:'Semana',mesant:'Mes ant.'}[p]||PER[p])+'</button>').join('')+'</div>'+perSel('f',custom?'':f.per)+
+  '<div><div class="lbl">'+lab+' · '+(custom?'rango elegido':PER[f.per].toLowerCase())+'</div><div class="big num">'+m(val)+'</div><div class="sub">'+({vendido:plural(vc.length,'venta cobrada','ventas cobradas'),cobrado:plural(vs.length,'operación válida','operaciones válidas'),porcobrar:plural(pp.length,'pendiente','pendientes')+' · no suman a ventas'})[S.vmetric]+'</div></div>'+
   '<div class="seg" role="group" aria-label="Indicador">'+[['vendido','Vendido'],['cobrado','Cobrado'],['porcobrar','Por cobrar']].map(x=>'<button data-a="vmetric" data-v="'+x[0]+'" aria-pressed="'+(S.vmetric===x[0])+'">'+x[1]+'</button>').join('')+'</div></section>'+
   '<div class="chips" role="group" aria-label="Estado">'+['todas','cobrada','pendiente','cancelada','devuelta'].map(e=>'<button class="chip" data-a="estado" data-v="'+e+'" aria-pressed="'+(f.estado===e)+'">'+(e==='todas'?'Todas':ESTADOS[e])+' <i>'+cnt(e)+'</i></button>').join('')+'</div>'+
   '<div class="search"><input class="inp" id="q" data-in="q" type="search" placeholder="Buscar por producto o cliente" value="'+esc(f.q)+'" autocomplete="off"><button class="icon-btn" data-a="filtros" aria-label="Filtros" aria-expanded="'+f.open+'" style="'+(nF?'color:var(--accent)':'')+'">'+ico('flt',20)+(nF?'<i class="bdg">'+nF+'</i>':'')+'</button></div>'+
@@ -289,15 +303,15 @@ function vVentasLista(d){
   '<div id="lista" style="margin-top:6px">'+listaVentas(d)+'</div>'}
 function vIngresos(d){
   const sal=saldos(d),disp=sal.efectivo+sal.banco,pend=d.ventas.filter(o=>valida(o)&&porCobrarDe(o)>0);
-  const all=movs(d),fl=S.dfilt;
-  const L=fl==='pendiente'?[]:all.filter(x=>fl==='todos'||(fl==='ingresos'&&x.k==='cobro')||(fl==='gastos'&&(x.k==='gasto'||x.k==='retiro'))||(fl==='haberes'&&x.k==='haberes')||(fl==='transf'&&x.k==='transf'));
+  const all=movs(d),fl=S.dfilt,dr=rng(S.dp),inR=x=>x.ts>=dr[0]&&x.ts<dr[1],perM=all.filter(inR),ing=sum(perM.filter(x=>x.k==='cobro'),x=>x.monto),egr=sum(perM.filter(x=>x.k==='gasto'||x.k==='haberes'||x.k==='retiro'),x=>x.monto);
+  const L=fl==='pendiente'?[]:all.filter(x=>inR(x)&&(fl==='todos'||(fl==='ingresos'&&x.k==='cobro')||(fl==='gastos'&&(x.k==='gasto'||x.k==='retiro'))||(fl==='haberes'&&x.k==='haberes')||(fl==='transf'&&x.k==='transf')));
   let h='<section class="hero" aria-label="Dinero disponible"><div><div class="lbl">Dinero disponible</div><div class="big num">'+m(disp)+'</div><div class="sub">Efectivo + transferencias</div></div></section><div class="list cards3" style="margin-top:12px">'+ctasVis(d).map(k=>'<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div><div class="k">'+CUENTAS[k]+'</div><div class="v num" style="margin:2px 0 0">'+m(sal[k])+'</div></div><span class="ava mv">'+ico(k==='efectivo'?'wal':'swap',20)+'</span></div>').join('')+'</div>'+
   '<button class="card tap" style="margin-top:12px" data-a="goventas" data-per="todo" data-estado="pendiente"><div class="k">Pendiente de cobro</div><div class="v num">'+m(sum(pend,porCobrarDe))+'</div><div class="s">'+plural(pend.length,'operación','operaciones')+' · no está en tus saldos hasta que lo cobres</div></button>'+
-  '<div class="sec"><h2>Movimientos</h2><button data-a="saldos">Saldos iniciales</button></div>'+
+  '<div class="sec"><h2>Movimientos</h2><button data-a="saldos">Saldos iniciales</button></div>'+gChips('dper',PB,S.dp)+perSel('dp',S.dp)+'<div class="tiles3"><div class="card"><div class="k">Ingresos</div><div class="v num" style="color:var(--ok)">'+m(ing)+'</div></div><div class="card"><div class="k">Egresos</div><div class="v num" style="color:var(--bad)">'+m(egr)+'</div></div><div class="card"><div class="k">Resultado</div><div class="v num" style="color:var(--'+(ing-egr>=0?'ok':'bad')+')">'+m(ing-egr)+'</div></div></div><p class="hint" style="margin:8px 2px 0">'+PER[S.dp]+(S.dp==='todo'?'':' · '+fCorta(dr[0])+' al '+fCorta(Math.min(dr[1]-1,Date.now())))+'. Tocá un movimiento para ver el detalle o editarlo.</p>'+
   '<div class="chips" style="margin-top:0">'+[['todos','Todos'],['ingresos','Ingresos'],['gastos','Gastos'],['haberes','Haberes'],['pendiente','Pendiente de cobro'],['transf','Entre cuentas']].map(x=>'<button class="chip" data-a="dfilt" data-v="'+x[0]+'" aria-pressed="'+(fl===x[0])+'">'+x[1]+'</button>').join('')+'</div>';
   if(fl==='pendiente'){const ps=pend.slice().sort((a,b)=>b.ts-a.ts);
     return h+(ps.length?'<p class="hint" style="margin:0 0 8px">Ventas con saldo por cobrar. Todavía no están en tus saldos.</p><div class="list">'+ps.map(o=>'<button class="item" data-a="venta" data-id="'+esc(o.id)+'"><span class="ava in">'+ico('dn',20)+'</span><span class="mid"><div class="t">'+esc(o.producto)+'</div><div class="d">'+esc(o.cliente||'Mostrador')+' · '+when(o.ts)+'</div></span><span class="r"><span class="amt num">'+m(porCobrarDe(o))+'</span></span></button>').join('')+'</div>':'<div class="empty"><b>Nada pendiente de cobro</b>Todas tus ventas están cobradas.</div>')}
-  if(!L.length)return h+'<div class="empty"><b>Sin movimientos</b>Acá vas a ver cobros, gastos y pasajes entre cuentas.</div>';
+  if(!L.length)return h+'<div class="empty" style="margin-top:12px"><b>Sin movimientos</b>'+(S.dp==='todo'?'Acá vas a ver cobros, gastos y pasajes entre cuentas.':'No hay movimientos en este período. Probá con otro mes o tocá “Todo”.')+'</div>';
   let cur=null;h+='<div class="list">';
   L.forEach(x=>{const dk=D0(x.ts);if(dk!==cur){cur=dk;const dia=L.filter(y=>D0(y.ts)===dk&&y.k!=='transf');const net=sum(dia,y=>y.k==='cobro'?y.monto:-y.monto);
     h+='</div><div class="day"><b>'+esc(dayName(x.ts))+'</b><span class="num">'+(dia.length?'Neto '+mS(net):'')+'</span></div><div class="list">'}
@@ -343,7 +357,7 @@ function clientesHtml(d,r){
     '<p class="hint" style="margin-top:12px">Todavía no hay clientes con nombre en este período. Escribí el nombre al cargar una venta para ver quién compra más.</p>')+
     '<p class="hint" style="margin-top:10px">Cuentan solo las ventas cobradas. Las pendientes, canceladas, devueltas y las de "Mostrador" no entran. Tocá un cliente para ver sus ventas.</p></div>'}
 function vStats(d){
-  const r=rng(S.sp),pr=rng(S.sp,true),s=stats(d,r),p=stats(d,pr),lab={hoy:'vs ayer',semana:'vs semana anterior',mes:'vs mes anterior'}[S.sp];
+  const r=rng(S.sp),pr=prevR(S.sp),s=stats(d,r),p=stats(d,pr),lab=vsLabel(S.sp),deudaTot=sum(d.ventas.filter(o=>valida(o)&&porCobrarDe(o)>0),porCobrarDe);
   const med={};d.ventas.forEach(o=>{if(!valida(o))return;(o.cobros||[]).forEach(c=>{if(c.ts>=r[0]&&c.ts<r[1])med[c.medio]=(med[c.medio]||0)+c.monto})});
   const med2={};for(const k in med)med2[medN(k)]=(med2[medN(k)]||0)+med[k];const mrows=Object.keys(med2).map(k=>({n:MLABEL[k],total:med2[k]})).sort((a,b)=>b.total-a.total);
   const cats=groupBy(s.vs,'categoria').slice(0,5);
@@ -351,14 +365,14 @@ function vStats(d){
   const ev={ventas:'Ventas',gastos:'Gastos',haberes:'Haberes',ganancia:'Ganancia estimada'}[S.evo];
   const ind=(k,v,sub,extra,cls)=>'<div class="card'+(cls?' '+cls:'')+'"><div class="k">'+k+'</div><div class="v num">'+v+'</div>'+(extra||'')+'<div class="s">'+sub+'</div></div>';
   return '<div class="top"><h1>Estadísticas</h1></div>'+
-  '<div class="seg light" role="group" aria-label="Período">'+['hoy','semana','mes'].map(x=>'<button data-a="sp" data-v="'+x+'" aria-pressed="'+(S.sp===x)+'">'+(x==='semana'?'Semana':PER[x])+'</button>').join('')+'</div>'+
+  '<div class="seg light s4" role="group" aria-label="Período">'+['hoy','semana','mes','mesant'].map(x=>'<button data-a="sp" data-v="'+x+'" aria-pressed="'+(S.sp===x)+'">'+({semana:'Semana',mesant:'Mes ant.'}[x]||PER[x])+'</button>').join('')+'</div>'+perSel('sp',S.sp)+'<p class="hint" style="margin:8px 2px 0">Mostrando <b style="color:var(--ink)">'+PER[S.sp].toLowerCase()+'</b> · '+fCorta(r[0])+' al '+fCorta(Math.min(r[1]-1,Date.now()))+'</p>'+
   '<div class="ind" style="margin-top:12px">'+ind('Total vendido',m(s.vendido),'Solo ventas cobradas · las pendientes no suman',deltaTag(s.vendido,p.vendido,lab))+
-  ind('Total cobrado',m(s.cob),'Dinero recibido por esas ventas')+ind('Por cobrar',m(s.porCobrar),plural(s.pend,'pedido pendiente','pedidos pendientes')+' · no suman a ventas')+
+  ind('Total cobrado',m(s.cob),'Dinero recibido por esas ventas')+ind('Por cobrar',m(s.porCobrar),plural(s.pend,'pedido pendiente','pedidos pendientes')+' · no suman a ventas'+(deudaTot>s.porCobrar?' · deuda total acumulada '+m(deudaTot):''))+
   ind('Gastos',m(s.gastos),'Sin haberes · fijos '+m(gStats(d,r).fijo),'','gas')+ind('Haberes',m(s.haberes),'Pagos de haberes del período','','hab')+
   ind('Total egresos',m(s.egresos),'Gastos + haberes'+(s.retiros?' · sin retiros personales ('+m(s.retiros)+')':''))+
   ind('Ganancia estimada',m(s.ganancia),s.sinCosto?'Faltan costos en '+plural(s.sinCosto,'venta','ventas')+': puede estar sobreestimada':'Ventas menos costos, gastos y haberes')+
   ind('Operaciones',s.ops,'Ventas cobradas del período')+ind('Unidades vendidas',qty(s.unidades),'Un combo cuenta por sus personas: “Combo para 4P” = 4 unidades')+ind('Unidades por venta',s.ops?qty(Math.round(s.unidades/s.ops*10)/10):'—','Promedio por operación')+ind('Total pedidos',d.ventas.filter(o=>o.ts>=r[0]&&o.ts<r[1]).length,'Con cancelados y devueltos')+ind('Ticket promedio',m(s.ticket),'Promedio por operación')+'</div>'+
-  '<div class="sec"><h2>Cobrado por medio de pago</h2></div><div class="card">'+bars(mrows,Math.max(1,...mrows.map(x=>x.total)),'Todavía no cobraste nada en este período.')+'</div>'+
+  comparativaHtml(d)+'<div class="sec"><h2>Cobrado por medio de pago</h2></div><div class="card">'+bars(mrows,Math.max(1,...mrows.map(x=>x.total)),'Todavía no cobraste nada en este período.')+'<p class="hint" style="margin-top:10px">Según la fecha en que se cobró cada pago.</p></div>'+
   '<div class="sec"><h2>Más vendidos</h2></div><div class="card"><div class="lab" style="margin-bottom:8px">Productos</div>'+prodList(s.vs)+
   (cats.length?'<div class="lab" style="margin:14px 0 8px">Categorías</div>'+bars(cats,Math.max(1,...cats.map(x=>x.total)),''):'')+'</div>'+
   agregadosHtml(s.vs)+clientesHtml(d,r)+statsExtra(d,r,pr,s)+'<div class="sec"><h2>Evolución</h2></div><div class="card"><div class="seg light" role="group" aria-label="Serie">'+[['ventas','Ventas'],['gastos','Gastos'],['haberes','Haberes'],['ganancia','Ganancia']].map(x=>'<button data-a="evo" data-v="'+x[0]+'" aria-pressed="'+(S.evo===x[0])+'">'+x[1]+'</button>').join('')+'</div>'+
@@ -378,7 +392,7 @@ function vAjustes(d){
   '<p class="hint" style="margin-top:18px">'+(S.usingDb?'Tus datos se guardan en Supabase y se actualizan en todos tus dispositivos.':'Tus datos se guardan solo en este navegador. Descargá una copia de seguridad de vez en cuando.')+'</p>'}
 
 /* ---------- módulo de gastos y pestañas de Dinero ---------- */
-S.prodBy='monto';S.prodAll=false;S.dtab='ingresos';S.hp='mes';S.hday='hoy';
+S.dp='mes';S.cmpmode='mtd';S.prodBy='monto';S.prodAll=false;S.dtab='ingresos';S.hp='mes';S.hday='hoy';
 S.g={per:'mes',desde:'',hasta:'',v:'resumen',q:'',tipo:'',medio:'',ord:'fecha-d',prod:'',cmp:false,sel:-1};
 const CLASES={fijo:'Fijo',variable:'Variable'};
 const claseDe=g=>g.clase==='fijo'?'fijo':'variable';
@@ -396,6 +410,7 @@ function gRange(p){const n=Date.now(),t0=D0(n);
   if(p==='hoy')return {r:[t0,t0+DAY],pr:[t0-DAY,t0]};
   if(p==='7d')return {r:[t0-6*DAY,t0+DAY],pr:[t0-13*DAY,t0-6*DAY]};
   if(p==='mesant')return {r:[mo0(n,-1),mo0(n)],pr:[mo0(n,-2),mo0(n,-1)]};
+  if(typeof p==='string'&&p.slice(0,2)==='m:'){const a=mkT(p.slice(2));return {r:[a,mo0(a,1)],pr:[mo0(a,-1),a]}}
   if(p==='6m')return {r:[mo0(n,-5),mo0(n,1)],pr:[mo0(n,-11),mo0(n,-5)]};
   if(p==='anio')return {r:[mo0(n,-11),mo0(n,1)],pr:[mo0(n,-23),mo0(n,-11)]};
   if(p==='custom'&&S.g.desde){const a=new Date(S.g.desde+'T00:00').getTime(),b=(S.g.hasta?new Date(S.g.hasta+'T00:00').getTime():t0)+DAY;
@@ -464,14 +479,14 @@ function vDinero(d){
     (S.dtab==='gastos'?vGastos(d):S.dtab==='haberes'?vHaberes(d):vIngresos(d))+'</div>'}
 function vHaberes(d){
   const per=S.hp,r=rng(per),L=d.gastos.filter(g=>g.tipo==='haberes'&&g.ts>=r[0]&&g.ts<r[1]).sort((a,b)=>b.ts-a.ts);
-  return '<button class="btn" data-a="hnuevo">+ Nuevo pago de haberes</button>'+gChips('hper',[['hoy','Hoy'],['semana','Esta semana'],['mes','Este mes'],['todo','Todo']],per)+
+  return '<button class="btn" data-a="hnuevo">+ Nuevo pago de haberes</button>'+gChips('hper',PB,per)+perSel('hp',per)+
    '<div class="card" style="margin-top:12px"><div class="k">Total pagado en haberes</div><div class="v num">'+m(sum(L,g=>g.monto))+'</div><div class="s">'+plural(L.length,'pago','pagos')+' · '+(per==='todo'?'todo el historial':PER[per].toLowerCase())+'</div></div>'+
-   (L.length?'<div class="list" style="margin-top:12px">'+L.map(g=>movRow({k:'haberes',ts:g.ts,monto:g.monto,cuenta:ctaN(g.cuenta),t:g.concepto,ref:g.id})).join('')+'</div>':'<div class="empty" style="margin-top:12px"><b>Sin pagos de haberes</b>Registrá sueldos, adelantos o aguinaldos con el botón de arriba.</div>')}
+   (L.length?'<div class="list" style="margin-top:12px">'+L.map(g=>movRow({k:'haberes',ts:g.ts,monto:g.monto,cuenta:ctaN(g.cuenta),t:g.concepto,ref:g.id})).join('')+'</div>':'<div class="empty" style="margin-top:12px"><b>Sin pagos de haberes</b>Registrá sueldos, adelantos o aguinaldos con el botón de arriba.</div>')+(L.length?'<p class="hint" style="margin-top:10px">Tocá un pago para editarlo o eliminarlo.</p>':'')}
 /* ---------- Gastos ---------- */
 function vGastos(d){
   const g=S.g,rg=gRange(g.per),st=gStats(d,rg.r),pst=gStats(d,rg.pr),pres=g.v==='presupuesto';
   let h='<button class="btn" data-a="gnuevo">+ Nuevo gasto</button>';
-  if(!pres){h+=gChips('gper',GPER,g.per);
+  if(!pres){h+=gChips('gper',GPER,g.per)+perSel('g',g.per);
     if(g.per==='custom')h+='<div class="two" style="margin-top:8px"><div class="field"><label for="gdesde">Desde</label><input class="inp" type="date" id="gdesde" data-in="gdesde" value="'+esc(g.desde)+'"></div><div class="field"><label for="ghasta">Hasta</label><input class="inp" type="date" id="ghasta" data-in="ghasta" value="'+esc(g.hasta)+'"></div></div>';
     h+='<p class="hint" style="margin-top:6px">Período: '+gFecha(rg.r[0])+' al '+gFecha(rg.r[1]-1)+'</p>'}
   h+='<div style="margin-top:10px">'+gSeg('gv',[['resumen','Resumen'],['historial','Historial'],['productos','Productos'],['presupuesto','Presupuesto']],g.v)+'</div>';
@@ -511,7 +526,7 @@ function gHistorial(d,rg){
    '<div class="field" style="margin-top:10px"><label for="gord">Ordenar por</label><select class="inp" id="gord" data-in="gord">'+[['fecha-d','Fecha (más reciente)'],['fecha-a','Fecha (más antigua)'],['monto-d','Importe (mayor a menor)'],['monto-a','Importe (menor a mayor)'],['desc-a','Descripción (A-Z)'],['desc-z','Descripción (Z-A)']].map(o=>'<option value="'+o[0]+'"'+(g.ord===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select></div>'+
    '<div class="card" style="margin-top:12px"><div class="k">Total de los filtros aplicados</div><div class="v num">'+m(tot)+'</div><div class="s">'+plural(L.length,'gasto','gastos')+(L.length?' · <button class="link" data-a="gexp">Exportar CSV</button>':'')+'</div></div>';
   if(!L.length)return h+'<div class="empty" style="margin-top:12px"><b>Sin gastos para mostrar</b>'+(g.q||g.tipo||g.medio?'Probá cambiando la búsqueda o los filtros.':'No hay gastos en este período. Registrá uno con el botón “Nuevo gasto”.')+'</div>';
-  return h+'<div class="list" style="margin-top:12px">'+L.map(gRow).join('')+'</div>'}
+  return h+'<div class="list" style="margin-top:12px">'+L.map(gRow).join('')+'</div><p class="hint" style="margin-top:10px">Tocá un gasto para ver el detalle, editarlo o eliminarlo.</p>'}
 function gRank(title,sub,arr,main,detail,val,unify){
   const mx=Math.max(1,...arr.map(val));
   return '<div class="sec"><h2>'+title+'</h2></div><div class="card"><p class="hint">'+sub+'</p><div class="clis">'+arr.map((e,i)=>'<div class="cli"><span class="rk'+(i<3?' top':'')+'">'+(i+1)+'</span><span class="mid"><b>'+esc(e.label)+'</b><small>'+detail(e)+'</small></span><b class="num">'+main(e)+'</b><span class="track"><span class="fill" style="width:'+Math.max(3,Math.round(val(e)/mx*100))+'%"></span></span>'+(unify?'<span style="grid-column:2/-1"><button class="link" data-a="gmerge" data-v="'+esc(e.k)+'">Unificar nombre</button></span>':'')+'</div>').join('')+'</div></div>'}
@@ -594,7 +609,7 @@ function shGastoM(sh){
   '<div id="gitems" class="form">'+gItemsHtml(its)+'</div>'+
   '<button type="button" class="btn ghost" data-a="gadd">+ Agregar producto</button><div class="itm-sub" id="gm-info" style="display:grid;grid-template-columns:1fr auto"></div>'+
   dl('dl-gp',names)+dl('dl-gu',UNIDADES)+'</div>'+
-  '<div class="sh-foot"><div class="err" id="gm-err" role="alert"></div><button class="btn" data-a="save-gm">'+(old?'Guardar cambios':'Guardar gasto')+'</button></div>'}
+  '<div class="sh-foot"><div class="err" id="gm-err" role="alert"></div><button class="btn" data-a="save-gm">'+(old?'Guardar cambios':'Guardar gasto')+'</button>'+(old?'<button class="btn ghost" data-a="gdel" data-id="'+esc(old.id)+'">Eliminar gasto</button>':'')+'</div>'}
 async function doSaveGM(){
   const sh=S.sheet,old=sh.id?D().gastos.find(x=>x.id===sh.id):null,err=t=>{$('#gm-err').textContent=t};
   const concepto=val('gm-con').trim();if(!concepto)return err('Escribí la descripción del gasto.');
@@ -618,13 +633,13 @@ function shGastoDet(sh){
   const g=D().gastos.find(x=>x.id===sh.id);if(!g)return null;
   const its=gItems(g),pt=sum(its,i=>i.total),kv=(k,v)=>v?'<dt>'+k+'</dt><dd>'+v+'</dd>':'';
   let h=head(esc(g.concepto))+'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div class="num" style="font-size:32px;font-weight:800">'+m(g.monto)+'</div><span class="tag '+(claseDe(g)==='fijo'?'parcial':'cancelada')+'">'+CLASES[claseDe(g)]+'</span></div>';
+  if(!g.demo)h+='<div class="btns" style="margin:-4px 0 14px"><button class="btn" data-a="gedit" data-id="'+esc(g.id)+'">✎ Editar gasto</button><button class="btn ghost" data-a="gdel" data-id="'+esc(g.id)+'">Eliminar</button></div>';
   if(g.demo)h+='<div class="banner"><span>Esto es un ejemplo. Registrá tu primer gasto o venta para empezar.</span></div>';
   h+='<div class="card"><dl class="kv" style="margin:0">'+kv('Fecha',gFecha(g.ts)+' · '+fHora(g.ts))+kv('Tipo de gasto',CLASES[claseDe(g)])+kv('Medio de pago',CUENTAS[ctaN(g.cuenta)])+kv('Notas',esc(g.notas))+'</dl></div>';
   if(its.length){h+='<div class="sec" style="margin-top:16px"><h2 style="font-size:16px">Productos ('+its.length+')</h2></div><div class="card"><ul class="hist its">'+its.map(i=>'<li class="itl"><span class="mid"><b>'+esc(i.nombre)+'</b><small>'+qty(i.cantidad)+' '+uShort(unidadN(i.unidad))+' × '+m(i.precio)+'</small></span><b class="num">'+m(i.total)+'</b></li>').join('')+'</ul>'+
     '<dl class="kv" style="margin:12px 0 0;padding-top:10px;border-top:1px solid var(--line)">'+kv('Total de productos','<b>'+m(pt)+'</b>')+(g.monto>pt?kv('Otros conceptos',m(g.monto-pt)):'')+'</dl></div>'}
   else h+='<p class="hint" style="margin-top:12px">Gasto general, sin productos detallados.</p>';
-  if(g.demo)return h;
-  return h+'<div class="btns" style="margin-top:16px"><button class="btn sec2" data-a="gedit" data-id="'+esc(g.id)+'">Editar</button><button class="btn ghost" data-a="gdel" data-id="'+esc(g.id)+'">Eliminar</button></div>'}
+  return h}
 function shMerge(sh){
   const A=pStats(D(),[0,Infinity]),e=A.find(x=>x.k===sh.k);if(!e)return null;
   const dl='<datalist id="dl-mg">'+A.filter(x=>x.k!==e.k).map(x=>'<option value="'+esc(x.n)+'">').join('')+'</datalist>';
@@ -686,13 +701,13 @@ function agregadosHtml(vs){
   const L=[...mp.values()].sort((a,b)=>b.v-a.v||b.rev-a.rev).slice(0,8),tot=sum([...mp.values()],e=>e.rev);
   return '<div class="sec"><h2>Agregados más pedidos</h2></div><div class="card">'+(L.length?ubars(L,(x,r)=>qty(x)+(r.rev?' · '+m(r.rev):''),'')+(tot?'<p class="hint" style="margin-top:10px">Ingresos por agregados: <b>'+m(tot)+'</b> (ya incluidos en el total vendido).</p>':''):'<p class="hint">Todavía no registraste agregados. Podés cargarlos con su precio en cada producto al hacer una venta (medallón extra, huevo, jamón…).</p>')+'</div>'}
 /* ---------- Ventas: pestañas Ventas / Clientes ---------- */
-S.vtab='ventas';S.vcli='';S.cl={q:'',ord:'compras',fil:'todos',est:'todas'};
+S.vtab='ventas';S.vcli='';S.cl={q:'',ord:'compras',fil:'todos',est:'todas',per:'todo',fm:''};
 function vVentas(d){
   const tabs=[['ventas','Ventas'],['clientes','Clientes']];
   return '<div class="top"><h1>Ventas</h1><button class="pill-btn" data-a="nueva">'+ico('plus',18)+' Venta</button></div><div class="dtabs" role="tablist" aria-label="Secciones de ventas">'+tabs.map(t=>'<button role="tab" data-a="vtab" data-v="'+t[0]+'" aria-selected="'+(S.vtab===t[0])+'">'+t[1]+'</button>').join('')+'</div><div class="dpane">'+
     (S.vtab==='clientes'?(S.vcli?vCliente(d):vClientes(d)):vVentasLista(d))+'</div>'}
-function clientesAgg(d){const mp=new Map();
-  d.ventas.forEach(o=>{const nm=(o.cliente||'').trim(),k=norm(nm);if(!k||k==='mostrador')return;
+function clientesAgg(d,rg){const mp=new Map();
+  d.ventas.forEach(o=>{if(rg&&!(o.ts>=rg[0]&&o.ts<rg[1]))return;const nm=(o.cliente||'').trim(),k=norm(nm);if(!k||k==='mostrador')return;
     const e=mp.get(k)||{k,n:nm,compras:0,total:0,deuda:0,pend:0,pedidos:0,last:0,units:0};
     e.pedidos++;if(o.ts>=e.last){e.last=o.ts;e.n=nm}
     if(valida(o)){const pc=porCobrarDe(o);if(pc>0){e.deuda+=pc;e.pend++}}
@@ -700,21 +715,23 @@ function clientesAgg(d){const mp=new Map();
     mp.set(k,e)});
   return [...mp.values()]}
 function vClientes(d){
-  const c=S.cl,q=norm(c.q),all=clientesAgg(d);
+  const c=S.cl,q=norm(c.q),all=clientesAgg(d,rng(c.per)),hayClientes=clientesAgg(d).length>0;
   const F={todos:()=>true,deuda:e=>e.deuda>0,uno:e=>e.compras===1,algunas:e=>e.compras>=2&&e.compras<=4,muchas:e=>e.compras>=5};
   const L=all.filter(e=>(!q||norm(e.n).includes(q))&&(F[c.fil]||F.todos)(e));
   const ORD={compras:(a,b)=>b.compras-a.compras||b.total-a.total,monto:(a,b)=>b.total-a.total||b.compras-a.compras,reciente:(a,b)=>b.last-a.last,nombre:(a,b)=>a.n.localeCompare(b.n,'es'),deuda:(a,b)=>b.deuda-a.deuda||b.total-a.total};
   L.sort(ORD[c.ord]||ORD.compras);
-  let h='<div class="search"><input class="inp" id="clq" data-in="clq" type="search" placeholder="Buscar cliente por nombre" value="'+esc(c.q)+'" autocomplete="off"></div>'+
+  let h=gChips('cper',[['todo','Todo'],['mes','Este mes'],['mesant','Mes anterior']],c.per)+perSel('cl',c.per)+'<div class="search" style="margin-top:10px"><input class="inp" id="clq" data-in="clq" type="search" placeholder="Buscar cliente por nombre" value="'+esc(c.q)+'" autocomplete="off"></div>'+
    gChips('clfil',[['todos','Todos'],['deuda','Con deuda'],['uno','1 compra'],['algunas','2 a 4 compras'],['muchas','5 o más']],c.fil)+
    '<div class="field" style="margin-top:10px"><label for="clord">Ordenar por</label><select class="inp" id="clord" data-in="clord">'+[['compras','Más compras'],['monto','Mayor monto comprado'],['reciente','Compra más reciente'],['deuda','Mayor deuda'],['nombre','Nombre (A-Z)']].map(o=>'<option value="'+o[0]+'"'+(c.ord===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select></div>'+
-   '<div class="card" style="margin-top:12px"><div class="k">'+plural(L.length,'cliente','clientes')+(L.length!==all.length?' de '+all.length:'')+'</div><div class="v num">'+m(sum(L,e=>e.total))+'</div><div class="s">Comprado en total'+(sum(L,e=>e.deuda)?' · <b class="neg">por cobrar '+m(sum(L,e=>e.deuda))+'</b>':'')+'</div></div>';
+   '<div class="card" style="margin-top:12px"><div class="k">'+plural(L.length,'cliente','clientes')+(L.length!==all.length?' de '+all.length:'')+'</div><div class="v num">'+m(sum(L,e=>e.total))+'</div><div class="s">'+(c.per==='todo'?'Comprado en total':'Comprado · '+PER[c.per].toLowerCase())+(sum(L,e=>e.deuda)?' · <b class="neg">por cobrar '+m(sum(L,e=>e.deuda))+'</b>':'')+'</div></div>';
+  if(!all.length&&hayClientes)return h+'<div class="empty" style="margin-top:12px"><b>Sin compras en este período</b>Elegí otro mes o tocá “Todo”.</div>';
   if(!all.length)return h+'<div class="empty" style="margin-top:12px"><b>Todavía no hay clientes</b>Escribí el nombre del cliente al cargar una venta y va a aparecer acá con todo su historial. Las ventas de “Mostrador” no se listan.</div>';
   if(!L.length)return h+'<div class="empty" style="margin-top:12px"><b>Ningún cliente coincide</b>Probá con otro nombre o cambiá los filtros.</div>';
   return h+'<div class="list" style="margin-top:12px">'+L.map(e=>'<button class="item" data-a="cvc" data-v="'+esc(e.k)+'"><span class="ava">'+esc(e.n.charAt(0).toUpperCase())+'</span><span class="mid"><div class="t">'+esc(e.n)+'</div><div class="d">'+plural(e.compras,'compra','compras')+(e.pend?' · '+plural(e.pend,'pendiente','pendientes'):'')+' · última '+fCorta(e.last)+'</div></span><span class="r"><span class="amt num">'+m(e.total)+'</span>'+(e.deuda?'<span class="tag pendiente">Debe '+m(e.deuda)+'</span>':'')+'</span></button>').join('')+'</div>'}
 function vCliente(d){
   const e=clientesAgg(d).find(x=>x.k===S.vcli);if(!e){S.vcli='';return vClientes(d)}
-  const all=d.ventas.filter(o=>norm(o.cliente||'Mostrador')===e.k).sort((a,b)=>b.ts-a.ts),est=S.cl.est,L=est==='todas'?all:all.filter(o=>o.estado===est);
+  const all=d.ventas.filter(o=>norm(o.cliente||'Mostrador')===e.k).sort((a,b)=>b.ts-a.ts),est=S.cl.est,fm=S.cl.fm,L=(est==='todas'?all:all.filter(o=>o.estado===est)).filter(o=>!fm||mkey(o.ts)===fm);
+  const mmap=new Map();all.filter(o=>o.estado==='cobrada').forEach(o=>{const k=mkey(o.ts);mmap.set(k,(mmap.get(k)||0)+o.total)});const mrows=[...mmap.entries()].sort((a,b)=>b[0]<a[0]?-1:1).slice(0,6).map(([k,v])=>({n:monthName(k),total:v})),mths=[...new Set(all.map(o=>mkey(o.ts)))].sort().reverse();
   const pm=new Map();all.filter(o=>o.estado==='cobrada').forEach(o=>itemsOf(o).forEach(it=>{const k=norm(it.producto),x=pm.get(k)||{n:it.producto,u:0};x.u+=it.cantidad;pm.set(k,x)}));
   const fav=[...pm.values()].sort((a,b)=>b.u-a.u).slice(0,3).map(x=>esc(x.n)+' ×'+qty(x.u)).join(' · ');
   const ind=(k,v,s,cls)=>'<div class="card'+(cls?' '+cls:'')+'"><div class="k">'+k+'</div><div class="v num">'+v+'</div><div class="s">'+s+'</div></div>';
@@ -722,8 +739,26 @@ function vCliente(d){
    '<div class="ind">'+ind('Total comprado',m(e.total),plural(e.compras,'compra cobrada','compras cobradas'))+ind('Ticket promedio',e.compras?m(Math.round(e.total/e.compras)):'—','Por compra')+
    ind('Por cobrar',m(e.deuda),e.pend?plural(e.pend,'pedido pendiente','pedidos pendientes'):'Sin deuda',e.deuda?'gas':'')+ind('Unidades',qty(e.units),'En sus compras cobradas')+'</div>'+
    (fav?'<p class="hint" style="margin-top:10px">Pide más: <b style="color:var(--ink)">'+fav+'</b></p>':'')+
-   '<div class="sec"><h2>Historial de compras</h2></div>'+gChips('vcest',[['todas','Todas <i>'+all.length+'</i>'],['cobrada','Cobradas <i>'+all.filter(o=>o.estado==='cobrada').length+'</i>'],['pendiente','Pendientes <i>'+all.filter(o=>o.estado==='pendiente').length+'</i>'],['cancelada','Canceladas'],['devuelta','Devueltas']],est)+
+   (mrows.length>1?'<div class="sec"><h2>Compras por mes</h2></div><div class="card">'+bars(mrows,Math.max(1,...mrows.map(x=>x.total)),'')+'</div>':'')+'<div class="sec"><h2>Historial de compras</h2></div>'+gChips('vcest',[['todas','Todas <i>'+all.length+'</i>'],['cobrada','Cobradas <i>'+all.filter(o=>o.estado==='cobrada').length+'</i>'],['pendiente','Pendientes <i>'+all.filter(o=>o.estado==='pendiente').length+'</i>'],['cancelada','Canceladas'],['devuelta','Devueltas']],est)+(mths.length>1?'<select class="inp msel" data-in="clfm" aria-label="Filtrar por mes"><option value="">Todos los meses</option>'+mths.map(k=>'<option value="'+k+'"'+(fm===k?' selected':'')+'>'+monthName(k)+'</option>').join('')+'</select>':'')+
    (L.length?'<div class="list" style="margin-top:10px">'+L.map(ventaRow).join('')+'</div><p class="hint" style="margin-top:10px">Tocá una venta para ver el detalle, cobrarla o editarla.</p>':'<div class="empty" style="margin-top:10px"><b>Sin ventas con ese estado</b>Probá con otro filtro.</div>')}
+
+const PB=[['hoy','Hoy'],['semana','Semana'],['mes','Este mes'],['mesant','Mes ant.'],['todo','Todo']];
+const cliCnt=(d,r)=>{const fi=new Map(),act=new Set();d.ventas.forEach(o=>{if(o.estado!=='cobrada'||!valida(o))return;const k=norm(o.cliente||'');if(!k||k==='mostrador')return;if(!(fi.get(k)<=o.ts))fi.set(k,o.ts);if(o.ts>=r[0]&&o.ts<r[1])act.add(k)});let nu=0;act.forEach(k=>{const f=fi.get(k);if(f>=r[0]&&f<r[1])nu++});return {act:act.size,nu}};
+function cmpR(){const n=Date.now(),sp=S.sp;let a=mo0(n);if(sp==='mesant')a=mo0(n,-1);else if(typeof sp==='string'&&sp.slice(0,2)==='m:')a=mkT(sp.slice(2));
+  const pa=mo0(a,-1),isCur=a===mo0(n),mtd=isCur&&S.cmpmode!=='full',days=Math.max(1,Math.ceil((n-a)/DAY));
+  return mtd?{a,pa,isCur,mtd,days,r:[a,addD(a,days)],pr:[pa,Math.min(addD(pa,days),a)]}:{a,pa,isCur,mtd,days,r:[a,mo0(a,1)],pr:[pa,a]}}
+function cmpDelta(now,prev,inv){if(!prev&&!now)return '<span class="delta eq">—</span>';if(!prev)return '<span class="delta '+(inv?'dn':'up')+'">Nuevo</span>';
+  const p=Math.round((now-prev)/prev*100);return '<span class="delta '+(p===0?'eq':((p>0)!==!!inv?'up':'dn'))+'">'+(p>0?'+':'')+p+'%</span>'}
+function comparativaHtml(d){
+  const c=cmpR(),s=stats(d,c.r),p=stats(d,c.pr),cc=cliCnt(d,c.r),pc=cliCnt(d,c.pr),N=monthShort(c.a),P=monthShort(c.pa),ns=monthName(mkey(c.a)),ps=monthName(mkey(c.pa)),num=v=>String(v);
+  const rows=[['Vendido',s.vendido,p.vendido,m],['Operaciones',s.ops,p.ops,num],['Ticket promedio',s.ticket,p.ticket,m],['Unidades vendidas',s.unidades,p.unidades,qty],['Gastos',s.gastos,p.gastos,m,1],['Haberes',s.haberes,p.haberes,m,1],['Ganancia estimada',s.ganancia,p.ganancia,m],['Clientes activos',cc.act,pc.act,num],['Clientes nuevos',cc.nu,pc.nu,num]];
+  const head=!p.vendido&&!s.vendido?'Todavía no hay ventas cobradas en estos dos períodos.':!p.vendido?'No hubo ventas cobradas en '+ps+' para comparar.':'En '+ns+(c.mtd?' (hasta ahora)':'')+' vendiste <b>'+m(Math.abs(s.vendido-p.vendido))+(s.vendido>=p.vendido?' más':' menos')+'</b> que en '+ps+(c.mtd?' en los mismos días':'')+'.';
+  const rng_=c.mtd?'Del 1 al '+c.days+' de cada mes':'Mes completo';
+  return '<div class="sec"><h2>Comparativa de meses</h2></div><div class="card">'+(c.isCur?gSeg('cmpmode',[['mtd','Mismos días'],['full','Mes completo']],c.mtd?'mtd':'full'):'')+
+   '<p style="margin:'+(c.isCur?'12':'0')+'px 0 4px;font-size:14px">'+head+'</p><div class="cmp-leg"><span><i class="a"></i>'+esc(ns)+'</span><span><i class="b"></i>'+esc(ps)+'</span><small>'+rng_+'</small></div>'+
+   rows.map(r=>{const mx=Math.max(1,r[1],r[2]),w=v=>Math.max(v>0?3:0,Math.round(v/mx*100));
+     return '<div class="cmr"><div class="cmh"><span>'+r[0]+'</span>'+cmpDelta(r[1],r[2],r[4])+'</div><div class="cmb"><span>'+N+'</span><span class="tk"><i style="width:'+w(r[1])+'%"></i></span><b class="num">'+r[3](r[1])+'</b></div><div class="cmb prev"><span>'+P+'</span><span class="tk"><i style="width:'+w(r[2])+'%"></i></span><b class="num">'+r[3](r[2])+'</b></div></div>'}).join('')+
+   '<p class="hint" style="margin-top:10px">Gastos y haberes: si suben, el cambio se marca en rojo. Ganancia estimada = ventas menos costos, gastos y haberes. “Clientes nuevos” = su primera compra cobrada fue en el mes.</p></div>'}
 
 /* ---------- hojas (formularios y detalle) ---------- */
 const cloneV=o=>JSON.parse(JSON.stringify(o));
@@ -991,7 +1026,7 @@ document.addEventListener('click',async ev=>{
   case 'limpiar':Object.assign(S.f,{estado:'todas',per:'mes',q:'',medio:'',cat:'',producto:'',variante:'',cliente:'',envio:'',mmin:'',mmax:'',desc:'',desde:'',hasta:''});render();break;
   case 'dfilt':S.dfilt=v;render();break;
   case 'vtab':S.vtab=v;S.vcli='';render();break;
-  case 'cvc':S.vcli=v;S.cl.est='todas';window.scrollTo(0,0);render();break;
+  case 'cvc':S.vcli=v;S.cl.est='todas';S.cl.fm='';window.scrollTo(0,0);render();break;
   case 'cback':S.vcli='';window.scrollTo(0,0);render();break;
   case 'clfil':S.cl.fil=v;render();break;
   case 'vcest':S.cl.est=v;render();break;
@@ -1025,6 +1060,9 @@ document.addEventListener('click',async ev=>{
     L.forEach(x=>{const its=gItems(x);if(!its.length)rows.push([gFecha(x.ts),x.concepto,csvNum(x.monto),tipoLbl(x),CUENTAS[ctaN(x.cuenta)],'','','','','',x.notas||'']);else its.forEach((i,k)=>rows.push([gFecha(x.ts),x.concepto,k===0?csvNum(x.monto):'',tipoLbl(x),CUENTAS[ctaN(x.cuenta)],i.nombre,String(i.cantidad).replace('.',','),unidadN(i.unidad),csvNum(i.precio),csvNum(i.total),k===0?(x.notas||''):'']))});
     await saveFile('argyr-gastos-'+stamp()+'.csv',csv(rows));break}
   case 'sp':S.sp=v;render();break;
+  case 'dper':S.dp=v;render();break;
+  case 'cper':S.cl.per=v;render();break;
+  case 'cmpmode':S.cmpmode=v;render();break;
   case 'evo':S.evo=v;render();break;
   case 'span':S.span=v;S.sel=-1;render();break;
   case 'cliall':S.cliAll=(v==='todo');render();break;
@@ -1088,6 +1126,8 @@ document.addEventListener('input',ev=>{
   if(k==='gcalc'){calcG();return}
   if(k==='gmonto'){delete t.dataset.auto;calcG();return}
   if(k==='gq'){S.g.q=t.value;render();return}
+  if(k==='pm'){if(!t.value)return;const T=t.dataset.t,v=t.value;if(T==='f'){S.f.per=v;S.f.desde=S.f.hasta=''}else if(T==='sp')S.sp=v;else if(T==='hp')S.hp=v;else if(T==='dp')S.dp=v;else if(T==='g'){S.g.per=v;S.g.sel=-1}else if(T==='cl')S.cl.per=v;render();return}
+  if(k==='clfm'){S.cl.fm=t.value;render();return}
   if(k==='clq'){S.cl.q=t.value;render();return}
   if(k==='clord'){S.cl.ord=t.value;render();return}
   if(k==='gord'){S.g.ord=t.value;render();return}
